@@ -139,7 +139,7 @@ pct exec "${CTID}" -- bash -c "cp /opt/gwless/config.yaml.example /opt/gwless/co
 
 # ── Install systemd service ───────────────────────────────────────────────────
 info "Installing systemd service..."
-pct push "${CTID}" "${SCRIPT_DIR}/gwless.service" /etc/systemd/system/gwless.service
+pct exec "${CTID}" -- cp /opt/gwless/gwless.service /etc/systemd/system/gwless.service
 pct exec "${CTID}" -- systemctl daemon-reload
 pct exec "${CTID}" -- systemctl enable --now gwless
 
