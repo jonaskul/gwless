@@ -713,7 +713,10 @@ async def update_apply():
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        asyncio.create_task(loop.run_in_executor(_test_executor, run))
+        async def _run():
+            await loop.run_in_executor(_test_executor, run)
+
+        asyncio.create_task(_run())
 
         while True:
             item = await queue.get()
