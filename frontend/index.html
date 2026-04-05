@@ -819,6 +819,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     <h2>⚙ Settings</h2>
     <p class="settings-subtitle">Configure your Sophos and UniFi credentials. Use the Test buttons to verify connectivity before saving.</p>
 
+
     <!-- Sophos -->
     <div class="settings-section">
       <div class="settings-section-title">Sophos XGS — DHCP Source</div>
@@ -862,6 +863,50 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <span id="test-sophos-result" class="test-result"></span>
       </div>
       <div id="log-sophos" class="live-log" hidden></div>
+    </div>
+
+    <!-- Syslog -->
+    <div class="settings-section">
+      <div class="settings-section-title">Syslog DHCP Events</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">
+        Gwless can listen for UDP syslog messages from Sophos SFOS to track DHCP leases in real time —
+        no SSH admin access required. When enabled and receiving events, syslog is preferred over SSH.
+      </p>
+      <div class="settings-row triple">
+        <div class="settings-field">
+          <label>Enable syslog receiver</label>
+          <input id="sl-enabled" type="checkbox">
+        </div>
+        <div class="settings-field">
+          <label>UDP Port</label>
+          <input id="sl-port" type="number" value="514" min="1" max="65535" oninput="const h=document.getElementById('sl-port-hint');if(h)h.textContent=this.value||514">
+        </div>
+        <div class="settings-field">
+          <label>Bind address</label>
+          <input id="sl-bindhost" type="text" value="0.0.0.0" placeholder="0.0.0.0" autocomplete="off">
+        </div>
+      </div>
+      <div class="settings-row single">
+        <div class="settings-field">
+          <label>Status</label>
+          <span id="sl-status" style="font-size:13px;color:var(--text-muted)">—</span>
+        </div>
+      </div>
+      <details style="margin-top:8px">
+        <summary style="cursor:pointer;font-size:12px;color:var(--accent);user-select:none">How to configure Sophos SFOS</summary>
+        <ol style="font-size:12px;color:var(--text-muted);margin:8px 0 0 16px;line-height:1.8">
+          <li>In Sophos SFOS, go to <strong>Logging &amp; Monitoring → Log Settings</strong></li>
+          <li>Under <strong>Syslog Servers</strong>, add a new server:<br>
+              IP = this container's IP address, Port = <span id="sl-port-hint">514</span>, Protocol = UDP, Format = Default (or BSD)</li>
+          <li>Under <strong>Log Type and Severity</strong>, ensure <strong>Event</strong> logs are enabled</li>
+          <li>Make sure <strong>DHCP</strong> is included in the event log categories</li>
+          <li>Click <strong>Apply</strong> — lease events will appear in the Status field above after the next DHCP activity</li>
+        </ol>
+        <p style="font-size:12px;color:var(--text-muted);margin:6px 0 0">
+          <strong>Note:</strong> Port 514 requires the container to run as root (default for the LXC installer).
+          Use a port &gt; 1024 (e.g. 5140) if running unprivileged.
+        </p>
+      </details>
     </div>
 
     <!-- UniFi -->
@@ -1538,6 +1583,36 @@ function _getSecretHeaders() {
   return secret ? { 'X-Gwless-Secret': secret } : {};
 }
 
+let _syslogStatusInterval = null;
+
+async function _refreshSyslogStatus() {
+  try {
+    const r = await fetch('/api/syslog/status');
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('sl-status');
+    if (!el) return;
+    // Update port hint in how-to
+    const portHint = document.getElementById('sl-port-hint');
+    if (portHint) portHint.textContent = d.port || document.getElementById('sl-port').value;
+    if (!d.enabled) {
+      el.textContent = 'Disabled';
+      el.style.color = 'var(--text-muted)';
+    } else if (!d.running) {
+      el.textContent = 'Enabled but not running (check logs)';
+      el.style.color = 'var(--red, #e74c3c)';
+    } else if (d.last_event_ts == null) {
+      el.textContent = `Listening on port ${d.port} — no events received yet`;
+      el.style.color = 'var(--amber, #f39c12)';
+    } else {
+      const ago = Math.round(Date.now() / 1000 - d.last_event_ts);
+      const agoStr = ago < 60 ? `${ago}s ago` : `${Math.round(ago/60)}m ago`;
+      el.textContent = `Receiving — ${d.lease_count} lease(s), last event ${agoStr} (${d.messages_received} msg total)`;
+      el.style.color = 'var(--green, #27ae60)';
+    }
+  } catch (_) {}
+}
+
 async function openSettings() {
   document.getElementById('save-result').textContent = '';
   document.getElementById('test-sophos-result').textContent = '';
@@ -1560,6 +1635,11 @@ async function openSettings() {
     document.getElementById('s-apiport').value = s.api_port ?? 4444;
     document.getElementById('s-ssl').checked   = !!s.verify_ssl;
 
+    const sl = cfg.syslog || {};
+    document.getElementById('sl-enabled').checked   = !!sl.enabled;
+    document.getElementById('sl-port').value         = sl.port ?? 514;
+    document.getElementById('sl-bindhost').value     = sl.bind_host || '0.0.0.0';
+
     const u = cfg.unifi || {};
     document.getElementById('u-host').value = u.host || '';
     document.getElementById('u-user').value = u.username || '';
@@ -1575,10 +1655,21 @@ async function openSettings() {
     console.error('Failed to load config:', e);
   }
   document.getElementById('settings-overlay').classList.add('open');
+  _refreshSyslogStatus();
+  _syslogStatusInterval = setInterval(_refreshSyslogStatus, 5000);
 }
 
 function closeSettings() {
   document.getElementById('settings-overlay').classList.remove('open');
+  if (_syslogStatusInterval) { clearInterval(_syslogStatusInterval); _syslogStatusInterval = null; }
+}
+
+function _collectSyslogPayload() {
+  return {
+    enabled:   document.getElementById('sl-enabled').checked,
+    port:      parseInt(document.getElementById('sl-port').value, 10) || 514,
+    bind_host: document.getElementById('sl-bindhost').value.trim() || '0.0.0.0',
+  };
 }
 
 function _collectSophosPayload() {
@@ -1674,6 +1765,7 @@ async function saveSettings() {
 
   const payload = {
     sophos: _collectSophosPayload(),
+    syslog: _collectSyslogPayload(),
     unifi:  _collectUniFiPayload(),
     app: {
       port:               8080,
