@@ -248,28 +248,29 @@ def fetch_dhcp_server_config(config: dict) -> dict:
             continue
 
         server_info = {
-            "name": srv.get("@name") or srv.get("Name", ""),
+            "name": srv.get("Name") or srv.get("@name", ""),
             "interface": srv.get("Interface", ""),
-            "subnet": srv.get("Network", ""),
-            "gateway": srv.get("GatewayIP", ""),
-            "dns1": srv.get("DNS1", ""),
-            "dns2": srv.get("DNS2", ""),
-            "lease_time": srv.get("LeaseTime", ""),
+            "subnet": srv.get("SubnetMask") or srv.get("Network", ""),
+            "gateway": srv.get("Gateway") or srv.get("GatewayIP", ""),
+            "dns1": srv.get("PrimaryDNSServer") or srv.get("DNS1", ""),
+            "dns2": srv.get("SecondaryDNSServer") or srv.get("DNS2", ""),
+            "lease_time": srv.get("DefaultLeaseTime") or srv.get("LeaseTime", ""),
             "range_start": None,
             "range_end": None,
         }
 
         # IP range
-        ip_range = srv.get("IPRange") or srv.get("Range") or {}
+        ip_range = srv.get("IPLease") or srv.get("IPRange") or srv.get("Range") or {}
         if isinstance(ip_range, dict):
             server_info["range_start"] = ip_range.get("StartIP") or ip_range.get("From")
             server_info["range_end"] = ip_range.get("EndIP") or ip_range.get("To")
 
         servers.append(server_info)
 
-        # Static MAC reservations — try all known SFOS element names
+        # Static MAC reservations
         reservations = (
-            srv.get("Static")
+            srv.get("StaticLease")
+            or srv.get("Static")
             or srv.get("Host")
             or srv.get("Reservation")
             or []
@@ -410,10 +411,10 @@ def diagnose_api(config: dict, log_fn=None) -> None:
 
         for srv in servers:
             keys = [k for k in srv.keys() if not k.startswith("@")]
-            log(f"  Server '{srv.get('@name') or srv.get('Name', '?')}': fields = {keys}")
+            log(f"  Server '{srv.get('Name') or srv.get('@name', '?')}': fields = {keys}")
 
         def _count_reservations(s: dict) -> int:
-            r = s.get("Static") or s.get("Host") or s.get("Reservation") or []
+            r = s.get("StaticLease") or s.get("Static") or s.get("Host") or s.get("Reservation") or []
             if isinstance(r, list):
                 return len(r)
             return 1 if r else 0
