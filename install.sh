@@ -143,6 +143,18 @@ pct exec "${CTID}" -- cp /opt/gwless/gwless.service /etc/systemd/system/gwless.s
 pct exec "${CTID}" -- systemctl daemon-reload
 pct exec "${CTID}" -- systemctl enable --now gwless
 
+# ── Configure console auto-login ──────────────────────────────────────────────
+info "Configuring console auto-login..."
+pct exec "${CTID}" -- bash -c '
+  mkdir -p /etc/systemd/system/container-getty@1.service.d
+  cat > /etc/systemd/system/container-getty@1.service.d/override.conf << '"'"'EOF'"'"'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 $TERM
+EOF
+  systemctl daemon-reload
+'
+
 sleep 3
 
 echo ""
