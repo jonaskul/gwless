@@ -12,6 +12,7 @@ curl -fsSL "${GWLESS_REPO}/archive/refs/heads/${GWLESS_BRANCH}.tar.gz" \
   | tar -xz --strip-components=1 \
     --exclude='*/config.yaml' \
     --exclude='*/oui.json' \
+    --exclude='*/history.db' \
     -C "${GWLESS_DIR}"
 
 echo "[2/3] Updating Python dependencies..."

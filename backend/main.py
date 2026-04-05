@@ -22,12 +22,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .cache import TTLCache
+from .history import init_db, record_seen, get_device, get_recent_events
 from .merger import merge_clients, normalize_mac
 from .oui import lookup as oui_lookup, ensure_oui_db
 
 logger = logging.getLogger(__name__)
 
 _test_executor = ThreadPoolExecutor(max_workers=3)
+_history_last_ts: float = 0.0
 
 # ---------------------------------------------------------------------------
 # Config path resolution
@@ -210,6 +212,19 @@ def _get_merged_clients() -> list[dict]:
         else:
             c["vendor"] = oui_lookup(mac)
 
+    # Record to history DB only when cache was actually refreshed
+    global _history_last_ts
+    cache_ts = max(
+        _cache_leases.last_updated or 0,
+        _cache_unifi.last_updated or 0,
+    )
+    if cache_ts > _history_last_ts:
+        try:
+            record_seen(merged)
+            _history_last_ts = cache_ts
+        except Exception as e:
+            logger.warning("History recording failed: %s", e)
+
     return merged
 
 
@@ -218,6 +233,8 @@ def _get_merged_clients() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Gwless", description="DHCP & Network Client Dashboard", version="1.0.0")
+
+init_db()
 
 # No CORS middleware — frontend is served from the same origin (StaticFiles mount).
 # The browser's default same-origin policy protects all API endpoints.
@@ -575,6 +592,22 @@ async def test_unifi_stream(body: Optional[UniFiConfig] = None):
         host = "https://" + host
     merged = {**cfg, "host": host}
     return _make_sse_response(lambda log_fn: UniFiClient(merged).diagnose(log_fn))
+
+
+# ---------------------------------------------------------------------------
+# History endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/history/device/{mac}")
+async def history_device(mac: str):
+    """Return first/last seen and event log for a specific MAC address."""
+    return get_device(normalize_mac(mac))
+
+
+@app.get("/api/history/events")
+async def history_events(limit: int = Query(100, le=500)):
+    """Return the most recent events across all devices."""
+    return {"events": get_recent_events(limit)}
 
 
 # ---------------------------------------------------------------------------

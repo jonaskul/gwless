@@ -358,6 +358,46 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   margin-bottom: 10px;
 }
 
+.panel-subsection-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 10px 0 5px;
+}
+.event-list { display: flex; flex-direction: column; gap: 3px; }
+.event-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.event-ts { color: var(--text-muted); white-space: nowrap; font-family: 'JetBrains Mono', monospace; }
+.event-tag {
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.event-new_device      { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+.event-ip_change       { background: color-mix(in srgb, var(--amber) 20%, transparent); color: var(--amber); }
+.event-hostname_change { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.event-detail { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Events modal */
+#events-modal {
+  max-width: 660px;
+  width: 95vw;
+}
+#events-list .event-item {
+  grid-template-columns: auto auto auto 1fr;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
 .kv-row {
   display: flex;
   align-items: flex-start;
@@ -426,7 +466,21 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   animation: spin 0.7s linear infinite;
 }
 
-/* ── Theme + Settings buttons ── */
+/* ── Events + Theme + Settings buttons ── */
+#events-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 9px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+#events-btn:hover { color: var(--accent); border-color: var(--accent); }
+
 #theme-btn {
   background: none;
   border: 1px solid var(--border);
@@ -669,6 +723,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <option value="offline">Offline</option>
       </select>
       <button id="refresh-btn">↻ <span id="countdown">—</span></button>
+      <button id="events-btn" title="Recent events">⏱</button>
       <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑</button>
       <button id="settings-btn" title="Settings">⚙</button>
     </div>
@@ -742,6 +797,20 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     </div>
   </div>
 
+</div>
+
+<!-- Events modal -->
+<div id="events-overlay" class="settings-overlay">
+  <div id="events-modal" class="settings-modal">
+    <div class="settings-header">
+      <div>
+        <h2 style="margin:0;font-size:15px">Recent Events</h2>
+        <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">IP changes, new devices, and hostname changes — last 90 days</p>
+      </div>
+      <button class="settings-close" onclick="closeEvents()">✕</button>
+    </div>
+    <div id="events-list" style="padding:16px 20px;overflow-y:auto;max-height:65vh"></div>
+  </div>
 </div>
 
 <!-- Settings modal -->
@@ -1183,6 +1252,21 @@ function openPanel(c) {
   const content = document.getElementById('panel-content');
   content.innerHTML = buildPanelContent(c);
 
+  // Append history section and populate async
+  const histSec = document.createElement('div');
+  histSec.className = 'panel-section';
+  histSec.innerHTML = '<div class="panel-section-title">History</div>'
+    + '<div style="color:var(--text-muted);font-size:12px">Loading…</div>';
+  content.appendChild(histSec);
+
+  fetch('/api/history/device/' + encodeURIComponent(c.mac))
+    .then(r => r.json())
+    .then(data => _renderPanelHistory(histSec, data))
+    .catch(() => {
+      histSec.innerHTML = '<div class="panel-section-title">History</div>'
+        + '<div style="color:var(--text-muted);font-size:12px">Unavailable</div>';
+    });
+
   document.getElementById('panel').classList.add('open');
 }
 
@@ -1244,6 +1328,73 @@ function buildPanelContent(c) {
   }
 
   return html;
+}
+
+function _fmtTs(ts) {
+  return new Date(ts * 1000).toLocaleString();
+}
+
+function _fmtAgo(ts) {
+  const s = Math.floor(Date.now() / 1000 - ts);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+const _EVENT_LABEL = { new_device: 'New device', ip_change: 'IP change', hostname_change: 'Hostname' };
+
+function _renderPanelHistory(container, data) {
+  const dev = data.device;
+  if (!dev) {
+    container.innerHTML = '<div class="panel-section-title">History</div>'
+      + '<div style="color:var(--text-muted);font-size:12px">No history yet — appears after first poll.</div>';
+    return;
+  }
+  let html = `
+    <div class="panel-section-title">History</div>
+    <div class="kv-row"><span class="kv-label">First seen</span><span class="kv-value">${_fmtTs(dev.first_seen)}</span></div>
+    <div class="kv-row"><span class="kv-label">Last seen</span><span class="kv-value" title="${_fmtTs(dev.last_seen)}">${_fmtAgo(dev.last_seen)}</span></div>`;
+  if (data.events.length) {
+    html += '<div class="panel-subsection-title">Events</div><div class="event-list">';
+    for (const e of data.events) {
+      html += `<div class="event-item">
+        <span class="event-ts">${_fmtTs(e.ts)}</span>
+        <span class="event-tag event-${e.event}">${_EVENT_LABEL[e.event] || e.event}</span>
+        <span class="event-detail">${esc(e.detail || '')}</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function _renderEventsList(el, events) {
+  if (!events.length) { el.textContent = 'No events recorded yet.'; return; }
+  el.innerHTML = '<div class="event-list">' + events.map(e =>
+    `<div class="event-item" style="grid-template-columns:auto auto auto 1fr">
+      <span class="event-ts">${_fmtTs(e.ts)}</span>
+      <span class="event-tag event-${e.event}">${_EVENT_LABEL[e.event] || e.event}</span>
+      <span class="mono" style="font-size:11px;color:var(--text-muted)">${esc(e.mac)}</span>
+      <span class="event-detail">${esc(e.detail || '')}</span>
+    </div>`
+  ).join('') + '</div>';
+}
+
+async function openEvents() {
+  document.getElementById('events-overlay').classList.add('open');
+  const el = document.getElementById('events-list');
+  el.textContent = 'Loading…';
+  try {
+    const data = await fetch('/api/history/events?limit=200').then(r => r.json());
+    _renderEventsList(el, data.events);
+  } catch (e) {
+    el.textContent = 'Failed to load events.';
+  }
+}
+
+function closeEvents() {
+  document.getElementById('events-overlay').classList.remove('open');
 }
 
 function kvRow(label, value, copyable) {
@@ -1664,15 +1815,25 @@ document.addEventListener('DOMContentLoaded', () => {
   // Settings button
   document.getElementById('settings-btn').addEventListener('click', openSettings);
 
+  // Events button
+  document.getElementById('events-btn').addEventListener('click', openEvents);
+
+  // Close events modal on overlay click
+  document.getElementById('events-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('events-overlay')) closeEvents();
+  });
+
   // Close modal on overlay click
   document.getElementById('settings-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('settings-overlay')) closeSettings();
   });
 
-  // Escape closes settings too
+  // Escape closes modals and panel
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (document.getElementById('settings-overlay').classList.contains('open')) {
+      if (document.getElementById('events-overlay').classList.contains('open')) {
+        closeEvents();
+      } else if (document.getElementById('settings-overlay').classList.contains('open')) {
         closeSettings();
       } else {
         closePanel();
