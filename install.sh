@@ -57,7 +57,32 @@ pct create "${CTID}" "${TEMPLATE}" \
 
 info "Starting container..."
 pct start "${CTID}"
-sleep 8
+
+# ── Wait for network ──────────────────────────────────────────────────────────
+info "Waiting for container IP address..."
+CONTAINER_IP=""
+for ((i=1; i<=60; i++)); do
+  CONTAINER_IP=$(pct exec "${CTID}" -- hostname -I 2>/dev/null | awk '{print $1}')
+  if [[ -n "${CONTAINER_IP}" ]]; then
+    info "Container IP: ${CONTAINER_IP}"
+    break
+  fi
+  printf "."
+  [[ $i -eq 60 ]] && echo "" && die "Container did not get an IP within 60s — check that vmbr0 has a DHCP server."
+  sleep 1
+done
+[[ $i -gt 1 ]] && echo ""
+
+info "Waiting for DNS..."
+for ((i=1; i<=15; i++)); do
+  if pct exec "${CTID}" -- getent hosts deb.debian.org &>/dev/null; then
+    break
+  fi
+  printf "."
+  [[ $i -eq 15 ]] && echo "" && die "Container DNS not working after 30s — check your bridge/DNS configuration."
+  sleep 2
+done
+[[ $i -gt 1 ]] && echo ""
 
 # ── Copy application code ─────────────────────────────────────────────────────
 info "Copying application code into container..."
@@ -99,9 +124,6 @@ pct exec "${CTID}" -- systemctl daemon-reload
 pct exec "${CTID}" -- systemctl enable --now gwless
 
 sleep 3
-
-# ── Get container IP ──────────────────────────────────────────────────────────
-CONTAINER_IP=$(pct exec "${CTID}" -- hostname -I 2>/dev/null | awk '{print $1}' || echo "unknown")
 
 echo ""
 ok "╔══════════════════════════════════════════════════════════╗"
