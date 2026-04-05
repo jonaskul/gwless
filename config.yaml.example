@@ -24,3 +24,11 @@ app:
                                 # Note: log level in gwless.service is separate; change ExecStart there too.
   oui_update_on_start: true     # download OUI vendor database if not present
   # secret: ""                  # Optional: protects Settings/refresh endpoints. Set here, enter in the UI Secret field.
+
+syslog:
+  enabled: false                # Enable embedded UDP syslog receiver
+  port: 514                     # UDP port (514 requires root / privileged container)
+  bind_host: "0.0.0.0"         # Listen address (0.0.0.0 = all interfaces)
+  # Configure Sophos: Logging & Monitoring → Log Settings → add this container's IP,
+  # Protocol UDP, Port 514, Format Default. Enable "Event" logs with DHCP component.
+  # When enabled, syslog is preferred over SSH for live DHCP lease data.

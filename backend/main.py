@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from .cache import TTLCache
 from .merger import merge_clients, normalize_mac
 from .oui import lookup as oui_lookup, ensure_oui_db
+from .syslog_server import SyslogReceiver
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,7 @@ CONFIG.setdefault("unifi", {
     "site": "default", "verify_ssl": False, "poll_interval": 30,
 })
 CONFIG.setdefault("app", {"port": 8080, "log_level": "info", "oui_update_on_start": True, "secret": ""})
+CONFIG.setdefault("syslog", {"enabled": False, "port": 514, "bind_host": "0.0.0.0"})
 
 # ---------------------------------------------------------------------------
 # Caches
@@ -96,6 +98,8 @@ _cache_unifi     = TTLCache(ttl=CONFIG["unifi"].get("poll_interval", 30))
 _sophos_error: Optional[str] = None
 _unifi_error:  Optional[str] = None
 
+_syslog_receiver: Optional[SyslogReceiver] = None
+
 
 def _rebuild_caches() -> None:
     """Recreate caches with updated TTLs after config change."""
@@ -105,12 +109,40 @@ def _rebuild_caches() -> None:
     _cache_unifi     = TTLCache(ttl=CONFIG["unifi"].get("poll_interval", 30))
 
 
+def _start_syslog_if_enabled() -> None:
+    """Start (or restart) the syslog receiver according to current CONFIG."""
+    global _syslog_receiver
+    if _syslog_receiver is not None:
+        _syslog_receiver.stop()
+        _syslog_receiver = None
+    cfg = CONFIG.get("syslog", {})
+    if cfg.get("enabled", False):
+        _syslog_receiver = SyslogReceiver(
+            bind_host=cfg.get("bind_host", "0.0.0.0"),
+            port=int(cfg.get("port", 514)),
+        )
+        _syslog_receiver.start()
+
+
+_start_syslog_if_enabled()
+
+
 # ---------------------------------------------------------------------------
 # Data fetchers
 # ---------------------------------------------------------------------------
 
 def _get_sophos_leases() -> list[dict]:
     global _sophos_error
+
+    # Prefer syslog when receiver is active and has data
+    if _syslog_receiver is not None and CONFIG.get("syslog", {}).get("enabled", False):
+        leases = _syslog_receiver.get_leases()
+        if leases:
+            _cache_leases.set(leases)
+            _sophos_error = None
+            return leases
+        # Receiver is enabled but no events received yet — fall through to SSH
+
     entry = _cache_leases.get()
     if entry and not entry.stale:
         return entry.data
@@ -346,6 +378,24 @@ async def force_refresh():
     return {"status": "caches_invalidated"}
 
 
+@app.get("/api/syslog/status")
+async def syslog_status():
+    """Return syslog receiver status and live lease count."""
+    enabled = CONFIG.get("syslog", {}).get("enabled", False)
+    if _syslog_receiver is None:
+        return {"enabled": enabled, "running": False, "lease_count": 0,
+                "messages_received": 0, "last_event_ts": None}
+    return {
+        "enabled": enabled,
+        "running": _syslog_receiver.running,
+        "port": _syslog_receiver.port,
+        "bind_host": _syslog_receiver.bind_host,
+        "lease_count": len(_syslog_receiver.get_leases()),
+        "messages_received": _syslog_receiver.messages_received,
+        "last_event_ts": _syslog_receiver.last_event_ts,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Config API
 # ---------------------------------------------------------------------------
@@ -402,10 +452,17 @@ class AppConfig(BaseModel):
     secret:             str  = ""
 
 
+class SyslogConfig(BaseModel):
+    enabled:   bool = False
+    port:      int  = 514
+    bind_host: str  = "0.0.0.0"
+
+
 class ConfigPayload(BaseModel):
     sophos: SophosConfig = SophosConfig()
     unifi:  UniFiConfig  = UniFiConfig()
     app:    AppConfig    = AppConfig()
+    syslog: SyslogConfig = SyslogConfig()
 
 
 MASKED_SENTINEL = "••••••••"
@@ -439,6 +496,7 @@ async def save_config(payload: ConfigPayload):
     _sophos_error = None
     _unifi_error  = None
     _rebuild_caches()
+    _start_syslog_if_enabled()
 
     return {"status": "saved"}
 
