@@ -264,7 +264,14 @@ def _get_merged_clients() -> list[dict]:
 # FastAPI app
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Gwless", description="DHCP & Network Client Dashboard", version="1.0.0")
+def _read_version() -> str:
+    try:
+        return (Path(__file__).parent.parent / "VERSION").read_text().strip()
+    except Exception:
+        return "unknown"
+
+
+app = FastAPI(title="Gwless", description="DHCP & Network Client Dashboard", version=_read_version())
 
 init_db()
 
@@ -298,6 +305,11 @@ async def on_startup():
 # ---------------------------------------------------------------------------
 # Health + stats
 # ---------------------------------------------------------------------------
+
+@app.get("/api/version")
+async def get_version():
+    return {"version": _read_version()}
+
 
 @app.get("/health")
 async def health():
