@@ -80,6 +80,34 @@ class UniFiClient:
         logger.info("UniFi: fetched %d devices", len(raw))
         return raw
 
+    def diagnose(self, log_fn=None) -> None:
+        """
+        Diagnostic version of fetch_clients that reports progress via log_fn(msg, level).
+        Used by the live-log streaming endpoint.
+        """
+        def log(msg, level="info", **kw):
+            logger.info(msg)
+            if log_fn:
+                log_fn(msg, level, **kw)
+
+        log(f"Connecting to {self.host}…")
+        try:
+            log(f"Authenticating as {self.username!r}…")
+            self._login()
+            log("Login successful", "ok")
+
+            path = f"/proxy/network/api/s/{self.site}/stat/sta"
+            log(f"Querying {path}…")
+            raw = self._get(path)
+
+            if not isinstance(raw, list):
+                log(f"Unexpected response type: {type(raw).__name__}", "err", final=True, ok=False)
+                return
+
+            log(f"Found {len(raw)} active client(s)", "ok", final=True, ok=True)
+        except Exception as e:
+            log(str(e), "err", final=True, ok=False)
+
     def fetch_ap_map(self) -> dict[str, str]:
         """Return dict mapping AP MAC address -> AP name."""
         devices = self.fetch_devices()

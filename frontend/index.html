@@ -24,6 +24,20 @@
   --surface2:   #1c2128;
 }
 
+[data-theme="light"] {
+  --bg:         #f6f8fa;
+  --surface:    #ffffff;
+  --border:     #d0d7de;
+  --text:       #1f2328;
+  --text-muted: #636c76;
+  --accent:     #0969da;
+  --green:      #1a7f37;
+  --amber:      #9a6700;
+  --red:        #cf222e;
+  --gray:       #8c959f;
+  --surface2:   #eaeef2;
+}
+
 html, body {
   height: 100%;
   overflow: hidden;
@@ -412,7 +426,21 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   animation: spin 0.7s linear infinite;
 }
 
-/* ── Settings button ── */
+/* ── Theme + Settings buttons ── */
+#theme-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 9px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+#theme-btn:hover { color: var(--accent); border-color: var(--accent); }
+
 #settings-btn {
   background: none;
   border: 1px solid var(--border);
@@ -556,6 +584,23 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 .test-result.err  { color: var(--red); }
 .test-result.busy { color: var(--text-muted); }
 
+.live-log {
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #e6edf3;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+.live-log .ll-ok   { color: #3fb950; }
+.live-log .ll-err  { color: #f85149; }
+.live-log .ll-info { color: #8b949e; }
+
 .settings-footer {
   display: flex;
   justify-content: flex-end;
@@ -624,6 +669,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <option value="offline">Offline</option>
       </select>
       <button id="refresh-btn">↻ <span id="countdown">—</span></button>
+      <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑</button>
       <button id="settings-btn" title="Settings">⚙</button>
     </div>
   </div>
@@ -746,6 +792,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <button class="btn-test" onclick="testConnection('sophos-api')">Test API</button>
         <span id="test-sophos-result" class="test-result"></span>
       </div>
+      <div id="log-sophos" class="live-log" hidden></div>
     </div>
 
     <!-- UniFi -->
@@ -783,6 +830,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <button class="btn-test" onclick="testConnection('unifi')">Test Connection</button>
         <span id="test-unifi-result" class="test-result"></span>
       </div>
+      <div id="log-unifi" class="live-log" hidden></div>
     </div>
 
     <!-- App -->
@@ -1302,6 +1350,20 @@ function initEvents() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Theme toggle
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.documentElement.dataset.theme === 'light';
+  if (isLight) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.removeItem('gwlessTheme');
+  } else {
+    document.documentElement.dataset.theme = 'light';
+    localStorage.setItem('gwlessTheme', 'light');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Settings modal
 // ─────────────────────────────────────────────────────────────────────────────
 const MASKED = '••••••••';
@@ -1376,33 +1438,56 @@ function _collectUniFiPayload() {
 }
 
 async function testConnection(target) {
-  const resultId = target.startsWith('sophos') ? 'test-sophos-result' : 'test-unifi-result';
-  const el = document.getElementById(resultId);
-  el.className = 'test-result busy';
-  el.textContent = 'Testing…';
+  const isSophos = target.startsWith('sophos');
+  const resultEl = document.getElementById(isSophos ? 'test-sophos-result' : 'test-unifi-result');
+  const logEl    = document.getElementById(isSophos ? 'log-sophos' : 'log-unifi');
+
+  logEl.innerHTML = '';
+  logEl.hidden = false;
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Testing…';
 
   const btn = event.target;
   btn.disabled = true;
 
-  try {
-    let body;
-    if (target === 'sophos-ssh' || target === 'sophos-api') {
-      body = _collectSophosPayload();
-    } else {
-      body = _collectUniFiPayload();
-    }
+  const body = (target === 'sophos-ssh' || target === 'sophos-api')
+    ? _collectSophosPayload() : _collectUniFiPayload();
 
-    const resp = await fetch('/api/test/' + target, {
+  try {
+    const resp = await fetch('/api/test/' + target + '/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ..._getSecretHeaders() },
       body: JSON.stringify(body),
     });
-    const data = await resp.json();
-    el.className = 'test-result ' + (data.ok ? 'ok' : 'err');
-    el.textContent = (data.ok ? '✓ ' : '✗ ') + data.message;
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', lastOk = null, lastMsg = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const ev = JSON.parse(part.slice(6));
+        const line = document.createElement('div');
+        line.className = 'll-' + (ev.level || 'info');
+        line.textContent = ev.msg;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+        if (ev.final) { lastOk = ev.ok; lastMsg = ev.msg; }
+      }
+    }
+
+    resultEl.className = 'test-result ' + (lastOk === false ? 'err' : 'ok');
+    resultEl.textContent = (lastOk === false ? '✗ ' : '✓ ') + lastMsg;
   } catch (e) {
-    el.className = 'test-result err';
-    el.textContent = '✗ ' + e.message;
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
   } finally {
     btn.disabled = false;
   }
@@ -1490,6 +1575,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
+
+  // Restore saved theme preference
+  if (localStorage.getItem('gwlessTheme') === 'light') {
+    document.documentElement.dataset.theme = 'light';
+  }
 
   checkSetupRequired();
   fetchClients().then(startCountdown);

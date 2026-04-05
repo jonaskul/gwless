@@ -290,6 +290,124 @@ def fetch_dhcp_server_config(config: dict) -> dict:
     return {"servers": servers, "static_entries": static_entries}
 
 
+def diagnose_ssh(config: dict, log_fn=None) -> None:
+    """
+    Diagnostic version of fetch_dhcp_leases_ssh that reports progress via log_fn(msg, level).
+    Used by the live-log streaming endpoint.
+    """
+    def log(msg, level="info", **kw):
+        logger.info(msg)
+        if log_fn:
+            log_fn(msg, level, **kw)
+
+    if not PARAMIKO_AVAILABLE:
+        log("paramiko is not installed — cannot run SSH test", "err", final=True, ok=False)
+        return
+
+    host = config.get("host", "").strip()
+    if not host:
+        log("Sophos host is not configured. Open Settings to add credentials.", "err", final=True, ok=False)
+        return
+
+    port = config.get("ssh_port", 22)
+    username = config.get("username", "")
+    password = config.get("password", "")
+
+    log(f"Connecting to {host}:{port}…")
+    client = paramiko.SSHClient()
+    saved_key = config.get("ssh_host_key", "")
+    save_cb   = config.get("_save_host_key_cb")
+    if save_cb is not None:
+        client.set_missing_host_key_policy(_TOFUPolicy(saved_key, save_cb))
+    else:
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+    try:
+        client.connect(
+            host,
+            port=port,
+            username=username,
+            password=password,
+            timeout=15,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        log("SSH handshake complete, checking host key…")
+        log(f"Authenticated as {username!r}", "ok")
+
+        channel = client.invoke_shell(width=220, height=50)
+        time.sleep(0.5)
+        _ssh_recv_until(channel, ["Select Menu Number:", "$", "#"], timeout=5)
+
+        log("Navigating to advanced shell (Device Management → Advanced Shell)…")
+        channel.send("5\n")
+        time.sleep(0.5)
+        _ssh_recv_until(channel, ["Select Menu Number:"], timeout=8)
+        channel.send("3\n")
+        time.sleep(0.5)
+        _ssh_recv_until(channel, ["$", "#"], timeout=8)
+        log("Shell prompt reached")
+
+        log("Reading /tmp/dhcpd.leases…")
+        channel.send("cat /tmp/dhcpd.leases\n")
+        time.sleep(0.5)
+        lease_output = _ssh_recv_until(channel, ["$", "#"], timeout=10)
+        channel.close()
+
+        leases = parse_isc_leases(lease_output)
+        log(f"Found {len(leases)} active lease(s)", "ok", final=True, ok=True)
+    except Exception as e:
+        log(str(e), "err", final=True, ok=False)
+    finally:
+        client.close()
+
+
+def diagnose_api(config: dict, log_fn=None) -> None:
+    """
+    Diagnostic version of fetch_dhcp_server_config that reports progress via log_fn(msg, level).
+    Used by the live-log streaming endpoint.
+    """
+    def log(msg, level="info", **kw):
+        logger.info(msg)
+        if log_fn:
+            log_fn(msg, level, **kw)
+
+    host = config.get("host", "").strip()
+    if not host:
+        log("Sophos host is not configured. Open Settings to add credentials.", "err", final=True, ok=False)
+        return
+
+    url = _api_url(config)
+    log(f"Connecting to {url}…")
+
+    try:
+        payload = _build_payload(config, "DHCPServer")
+        log("Authenticating…")
+        resp = requests.post(
+            url,
+            data={"reqxml": payload},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            verify=config.get("verify_ssl", False),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        log("Querying DHCPServer configuration…")
+
+        doc = xmltodict.parse(resp.text)
+        response = doc.get("Response", {})
+        servers_raw = response.get("DHCPServer", {})
+        server_list = servers_raw if isinstance(servers_raw, list) else [servers_raw]
+        servers = [s for s in server_list if s]
+
+        static_count = sum(
+            len(s.get("Static", []) if isinstance(s.get("Static"), list) else ([s.get("Static")] if s.get("Static") else []))
+            for s in servers
+        )
+        log(f"Found {len(servers)} DHCP server(s), {static_count} static reservation(s)", "ok", final=True, ok=True)
+    except Exception as e:
+        log(str(e), "err", final=True, ok=False)
+
+
 def get_scopes_summary(servers: list[dict], active_leases: list[dict]) -> list[dict]:
     """Build scope summary with used/total lease counts."""
     # Build quick lookup of how many leases per scope

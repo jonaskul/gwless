@@ -4,15 +4,19 @@ API routes MUST be defined before StaticFiles mount.
 """
 from __future__ import annotations
 
+import asyncio
 import copy
+import json
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -21,6 +25,8 @@ from .merger import merge_clients, normalize_mac
 from .oui import lookup as oui_lookup, ensure_oui_db
 
 logger = logging.getLogger(__name__)
+
+_test_executor = ThreadPoolExecutor(max_workers=3)
 
 # ---------------------------------------------------------------------------
 # Config path resolution
@@ -504,6 +510,70 @@ async def test_unifi(body: Optional[UniFiConfig] = None):
         return {"ok": True, "message": f"Connected — {len(clients)} active client(s)"}
     except Exception as e:
         return {"ok": False, "message": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Streaming (SSE) test endpoints — live log output
+# ---------------------------------------------------------------------------
+
+def _make_sse_response(sync_fn):
+    """
+    Wraps a sync diagnostic function (signature: fn(log_fn)) in an SSE StreamingResponse.
+    log_fn(msg, level, **kw) is injected and bridges sync→async via asyncio.Queue.
+    """
+    async def generate():
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def log_fn(msg, level="info", **kw):
+            loop.call_soon_threadsafe(queue.put_nowait, {"msg": msg, "level": level, **kw})
+
+        async def run():
+            try:
+                await loop.run_in_executor(_test_executor, lambda: sync_fn(log_fn))
+            except Exception as e:
+                log_fn(str(e), "err", final=True, ok=False)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        asyncio.create_task(run())
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/test/sophos-ssh/stream", dependencies=[Depends(_require_secret)])
+async def test_sophos_ssh_stream(body: Optional[SophosConfig] = None):
+    from .sophos import diagnose_ssh
+    cfg = _resolve_sophos_cfg(body)
+    return _make_sse_response(lambda log_fn: diagnose_ssh(cfg, log_fn))
+
+
+@app.post("/api/test/sophos-api/stream", dependencies=[Depends(_require_secret)])
+async def test_sophos_api_stream(body: Optional[SophosConfig] = None):
+    from .sophos import diagnose_api
+    cfg = _resolve_sophos_cfg(body)
+    return _make_sse_response(lambda log_fn: diagnose_api(cfg, log_fn))
+
+
+@app.post("/api/test/unifi/stream", dependencies=[Depends(_require_secret)])
+async def test_unifi_stream(body: Optional[UniFiConfig] = None):
+    from .unifi import UniFiClient
+    cfg = _resolve_unifi_cfg(body)
+    host = cfg.get("host", "")
+    if host and not host.startswith("http"):
+        host = "https://" + host
+    merged = {**cfg, "host": host}
+    return _make_sse_response(lambda log_fn: UniFiClient(merged).diagnose(log_fn))
 
 
 # ---------------------------------------------------------------------------
