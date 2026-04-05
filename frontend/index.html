@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gwless — Network Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #0d1117;
+  --surface:    #161b22;
+  --border:     #30363d;
+  --text:       #e6edf3;
+  --text-muted: #8b949e;
+  --accent:     #58a6ff;
+  --green:      #3fb950;
+  --amber:      #d29922;
+  --red:        #f85149;
+  --gray:       #6e7681;
+  --surface2:   #1c2128;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ── Layout ── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Header ── */
+#header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  height: 52px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+#logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+#search-wrap {
+  flex: 1;
+  max-width: 380px;
+}
+
+#search {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  padding: 6px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+#search:focus { border-color: var(--accent); }
+#search::placeholder { color: var(--text-muted); }
+
+.header-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+select.filter {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  outline: none;
+}
+select.filter:focus { border-color: var(--accent); }
+
+#refresh-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+#refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ── Status bar ── */
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 20px;
+  height: 36px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.stat-item:first-child { padding-left: 0; }
+
+.stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-green { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.dot-amber { background: var(--amber); }
+.dot-red   { background: var(--red); }
+.dot-gray  { background: var(--gray); }
+
+/* ── Alert banners ── */
+#alerts {
+  flex-shrink: 0;
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 20px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.alert-amber { background: rgba(210,153,34,0.12); color: var(--amber); border-bottom: 1px solid rgba(210,153,34,0.2); }
+.alert-red   { background: rgba(248,81,73,0.12);  color: var(--red);   border-bottom: 1px solid rgba(248,81,73,0.2); }
+
+/* ── Main area ── */
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── Table ── */
+#table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+#table-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+#table-wrap::-webkit-scrollbar-track { background: var(--bg); }
+#table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+}
+
+th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+th:hover { color: var(--text); }
+th.sort-asc::after  { content: " ↑"; color: var(--accent); }
+th.sort-desc::after { content: " ↓"; color: var(--accent); }
+
+td {
+  padding: 7px 12px;
+  border-bottom: 1px solid rgba(48,54,61,0.5);
+  vertical-align: middle;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+tr.data-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+tr.data-row:hover { background: var(--surface2); }
+tr.data-row.selected { background: rgba(88,166,255,0.07); }
+
+.mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+.hostname { font-weight: 500; max-width: 160px; }
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.source-icon { font-size: 14px; }
+
+.signal-bar {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.signal-good  { color: var(--green); }
+.signal-ok    { color: var(--amber); }
+.signal-weak  { color: var(--red); }
+.signal-none  { color: var(--gray); }
+
+.lease-soon { color: var(--amber); }
+.lease-exp  { color: var(--red); }
+
+/* ── Empty state ── */
+#empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 80px 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+#empty .empty-icon { font-size: 48px; }
+
+/* ── Slide-over panel ── */
+#panel {
+  width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  transition: width 0.22s cubic-bezier(0.4,0,0.2,1);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+#panel.open {
+  width: 420px;
+  min-width: 420px;
+}
+
+#panel-inner {
+  width: 420px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+#panel-inner::-webkit-scrollbar { width: 5px; }
+#panel-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+#panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+#panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+#panel-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+#panel-close:hover { background: var(--border); color: var(--text); }
+
+.panel-section {
+  margin-bottom: 20px;
+}
+
+.panel-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+
+.kv-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.kv-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.kv-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text);
+  text-align: right;
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copy-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 1px 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+.copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+/* ── Loading spinner ── */
+#loading {
+  display: none;
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+}
+#loading.show { display: flex; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <div id="logo">⬡ Gwless</div>
+    <div id="search-wrap">
+      <input id="search" type="text" placeholder="Search hostname, IP, MAC, vendor…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="header-filters">
+      <select id="filter-vlan" class="filter">
+        <option value="">All VLANs</option>
+      </select>
+      <select id="filter-source" class="filter">
+        <option value="">All sources</option>
+        <option value="both">Matched</option>
+        <option value="sophos_only">Sophos only</option>
+        <option value="unifi_only">UniFi only</option>
+      </select>
+      <select id="filter-status" class="filter">
+        <option value="">All status</option>
+        <option value="online">Online</option>
+        <option value="offline">Offline</option>
+      </select>
+      <button id="refresh-btn">↻ <span id="countdown">—</span></button>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="statusbar">
+    <div class="stat-item">
+      <span class="stat-value" id="stat-total">—</span>
+      <span>clients</span>
+    </div>
+    <div class="stat-item">
+      <span class="dot dot-green"></span>
+      <span class="stat-value" id="stat-online">—</span>
+      <span>online</span>
+    </div>
+    <div class="stat-item">
+      <span>Sophos</span>
+      <span id="sophos-status-indicator"></span>
+    </div>
+    <div class="stat-item">
+      <span>UniFi</span>
+      <span id="unifi-status-indicator"></span>
+    </div>
+    <div class="stat-item" id="stat-showing-wrap" style="border-right:none">
+      <span id="stat-showing" style="color:var(--text-muted);font-size:12px"></span>
+    </div>
+  </div>
+
+  <!-- Alert banners -->
+  <div id="alerts"></div>
+
+  <!-- Main content area -->
+  <div id="main">
+    <div id="table-wrap">
+      <table id="client-table">
+        <thead>
+          <tr id="thead-row">
+            <th data-col="hostname">Hostname</th>
+            <th data-col="ip">IP Address</th>
+            <th data-col="mac">MAC Address</th>
+            <th data-col="vendor">Vendor</th>
+            <th data-col="vlan">VLAN</th>
+            <th data-col="connection">Connection</th>
+            <th data-col="signal">Signal</th>
+            <th data-col="lease_end">Lease Expires</th>
+            <th data-col="source">Source</th>
+            <th data-col="online">Status</th>
+          </tr>
+        </thead>
+        <tbody id="client-tbody"></tbody>
+      </table>
+      <div id="empty" style="display:none">
+        <div class="empty-icon">📡</div>
+        <div>No clients match your filters</div>
+      </div>
+    </div>
+
+    <!-- Slide-over panel -->
+    <div id="panel">
+      <div id="panel-inner">
+        <div id="panel-header">
+          <div>
+            <div id="panel-title">—</div>
+            <div id="panel-subtitle" style="color:var(--text-muted);font-size:12px;margin-top:3px"></div>
+          </div>
+          <button id="panel-close" title="Close (Esc)">✕</button>
+        </div>
+        <div id="panel-content"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Loading indicator -->
+<div id="loading"><div class="spinner"></div> Refreshing…</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+const state = {
+  clients: [],
+  filtered: [],
+  sortCol: 'hostname',
+  sortDir: 'asc',
+  search: '',
+  filterVlan: '',
+  filterSource: '',
+  filterStatus: '',
+  selectedMac: null,
+  countdownSec: 30,
+  countdownTimer: null,
+  refreshTimer: null,
+  sophosMeta: {},
+  unifiMeta: {},
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fetch
+// ─────────────────────────────────────────────────────────────────────────────
+async function fetchClients() {
+  document.getElementById('loading').classList.add('show');
+  try {
+    const params = new URLSearchParams();
+    if (state.search)       params.set('q', state.search);
+    if (state.filterVlan)   params.set('vlan', state.filterVlan);
+    if (state.filterSource) params.set('source', state.filterSource);
+    if (state.filterStatus) params.set('status', state.filterStatus);
+
+    const url = '/api/clients' + (params.toString() ? '?' + params : '');
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    state.clients = data.clients || [];
+    state.sophosMeta = {
+      stale: data.sophos_stale,
+      age: data.sophos_age_seconds,
+    };
+    state.unifiMeta = {
+      stale: data.unifi_stale,
+      age: data.unifi_age_seconds,
+    };
+
+    applyFilters();
+    updateStats();
+    updateAlerts();
+    updateVlanFilter();
+  } catch (e) {
+    console.error('Fetch error:', e);
+    showFetchError(e.message);
+  } finally {
+    document.getElementById('loading').classList.remove('show');
+  }
+}
+
+async function fetchStats() {
+  try {
+    const resp = await fetch('/api/stats');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    document.getElementById('stat-total').textContent = data.total ?? '—';
+    document.getElementById('stat-online').textContent = data.online ?? '—';
+    updateSourceIndicator('sophos', data.sophos_stale, data.sophos_error);
+    updateSourceIndicator('unifi', data.unifi_stale, data.unifi_error);
+  } catch (e) { /* silent */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Filter + sort
+// ─────────────────────────────────────────────────────────────────────────────
+function applyFilters() {
+  let list = [...state.clients];
+  list.sort((a, b) => sortCompare(a, b, state.sortCol, state.sortDir));
+  state.filtered = list;
+  renderTable();
+}
+
+function sortCompare(a, b, col, dir) {
+  const mult = dir === 'asc' ? 1 : -1;
+  const va = getSortValue(a, col);
+  const vb = getSortValue(b, col);
+  if (va === vb) return 0;
+  if (va == null) return 1;
+  if (vb == null) return -1;
+  return va < vb ? -mult : mult;
+}
+
+function getSortValue(c, col) {
+  switch (col) {
+    case 'hostname':  return (c.hostname || '').toLowerCase();
+    case 'ip':        return ipToNum(c.ip || '');
+    case 'mac':       return c.mac || '';
+    case 'vendor':    return (c.vendor || '').toLowerCase();
+    case 'vlan':      return c.vlan ?? 9999;
+    case 'signal':    return c.unifi?.rssi ?? c.unifi?.signal ?? -200;
+    case 'lease_end': return (c.sophos?.lease_end || '');
+    case 'source':    return c.source || '';
+    case 'online':    return c.online ? 0 : 1;
+    default:          return '';
+  }
+}
+
+function ipToNum(ip) {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return 0;
+  return parts.reduce((acc, p) => acc * 256 + parseInt(p || 0, 10), 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Table rendering
+// ─────────────────────────────────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('client-tbody');
+  const empty = document.getElementById('empty');
+  const showing = document.getElementById('stat-showing');
+
+  if (state.filtered.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'flex';
+    showing.textContent = 'No results';
+    return;
+  }
+
+  empty.style.display = 'none';
+  showing.textContent = `Showing ${state.filtered.length} of ${state.clients.length}`;
+
+  const fragment = document.createDocumentFragment();
+  for (const c of state.filtered) {
+    fragment.appendChild(buildRow(c));
+  }
+  tbody.innerHTML = '';
+  tbody.appendChild(fragment);
+}
+
+function buildRow(c) {
+  const tr = document.createElement('tr');
+  tr.className = 'data-row' + (c.mac === state.selectedMac ? ' selected' : '');
+  tr.dataset.mac = c.mac;
+
+  const signalVal = c.unifi?.rssi ?? c.unifi?.signal ?? null;
+  const signalClass = signalVal == null ? 'signal-none'
+    : signalVal >= -60 ? 'signal-good'
+    : signalVal >= -75 ? 'signal-ok'
+    : 'signal-weak';
+
+  const sourceIcon = sourceToIcon(c);
+  const statusDot  = c.online
+    ? '<span class="dot dot-green" title="Online"></span>'
+    : '<span class="dot dot-gray"  title="Lease only — not active in UniFi"></span>';
+
+  const leaseEnd = c.sophos?.lease_end || '';
+  const leaseDisplay = formatLeaseEnd(leaseEnd);
+  const leaseClass = leaseDisplay.cls;
+
+  const connection = connectionLabel(c);
+
+  tr.innerHTML = `
+    <td class="hostname" title="${esc(c.hostname || c.mac)}">${esc(c.hostname || '<span style="color:var(--text-muted)">—</span>')}</td>
+    <td class="mono">${esc(c.ip || '—')}</td>
+    <td class="mono" style="font-size:11px">${esc(c.mac || '—')}</td>
+    <td style="color:var(--text-muted);max-width:130px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.vendor || '')}">${esc(c.vendor || '—')}</td>
+    <td class="mono">${c.vlan != null ? c.vlan : '<span style="color:var(--text-muted)">—</span>'}</td>
+    <td style="color:var(--text-muted);font-size:12px">${esc(connection)}</td>
+    <td><span class="signal-bar ${signalClass}">${signalVal != null ? signalVal + ' dBm' : '—'}</span></td>
+    <td class="${leaseClass}" style="font-size:11px">${esc(leaseDisplay.text)}</td>
+    <td><span class="source-icon" title="${sourceLabel(c.source)}">${sourceIcon}</span></td>
+    <td>${statusDot}</td>
+  `;
+
+  tr.addEventListener('click', () => openPanel(c));
+  return tr;
+}
+
+function sourceToIcon(c) {
+  if (c.source === 'both') return '✅';
+  if (c.source === 'sophos_only') return '🔥';
+  if (c.unifi?.is_wired) return '🔌';
+  return '📶';
+}
+
+function sourceLabel(src) {
+  return { both: 'Matched (both sources)', sophos_only: 'Sophos DHCP only', unifi_only: 'UniFi only' }[src] || src;
+}
+
+function connectionLabel(c) {
+  if (!c.unifi) return '—';
+  if (c.unifi.is_wired) {
+    const port = c.unifi.sw_port != null ? ` port ${c.unifi.sw_port}` : '';
+    return `Wired${port}`;
+  }
+  return c.unifi.essid || 'WiFi';
+}
+
+function formatLeaseEnd(raw) {
+  if (!raw) return { text: '—', cls: '' };
+  // raw format: "YYYY/MM/DD HH:MM:SS"
+  try {
+    const normalized = raw.replace(/\//g, '-');
+    const d = new Date(normalized + 'Z');
+    if (isNaN(d)) return { text: raw, cls: '' };
+    const now = Date.now();
+    const diff = d.getTime() - now;
+    const hrs = diff / 3600000;
+    let cls = '';
+    if (diff < 0) cls = 'lease-exp';
+    else if (hrs < 2) cls = 'lease-soon';
+    return { text: d.toLocaleString(), cls };
+  } catch {
+    return { text: raw, cls: '' };
+  }
+}
+
+function esc(s) {
+  if (typeof s !== 'string') return s;
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Stats / status bar
+// ─────────────────────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById('stat-total').textContent  = state.clients.length;
+  document.getElementById('stat-online').textContent = state.clients.filter(c => c.online).length;
+  updateSourceIndicator('sophos', state.sophosMeta.stale, null);
+  updateSourceIndicator('unifi',  state.unifiMeta.stale,  null);
+}
+
+function updateSourceIndicator(src, stale, error) {
+  const el = document.getElementById(src + '-status-indicator');
+  if (!el) return;
+  if (error) {
+    el.innerHTML = '<span class="dot dot-red" title="Error"></span>';
+  } else if (stale) {
+    el.innerHTML = '<span class="dot dot-amber" title="Stale data"></span>';
+  } else {
+    el.innerHTML = '<span class="dot dot-green" title="OK"></span>';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Alerts
+// ─────────────────────────────────────────────────────────────────────────────
+function updateAlerts() {
+  const alerts = document.getElementById('alerts');
+  const items = [];
+
+  if (state.sophosMeta.stale && state.sophosMeta.age != null) {
+    const m = Math.round(state.sophosMeta.age / 60);
+    items.push(`<div class="alert alert-amber">⚠ Sophos data is ${m}m old — last refresh failed</div>`);
+  }
+  if (state.unifiMeta.stale && state.unifiMeta.age != null) {
+    const m = Math.round(state.unifiMeta.age / 60);
+    items.push(`<div class="alert alert-amber">⚠ UniFi data is ${m}m old — last refresh failed</div>`);
+  }
+  if (state.sophosMeta.stale && state.unifiMeta.stale) {
+    items.push(`<div class="alert alert-red">✗ No live data available — showing cached results</div>`);
+  }
+
+  alerts.innerHTML = items.join('');
+}
+
+function showFetchError(msg) {
+  document.getElementById('alerts').innerHTML =
+    `<div class="alert alert-red">✗ Failed to fetch data: ${esc(msg)}</div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VLAN filter population
+// ─────────────────────────────────────────────────────────────────────────────
+function updateVlanFilter() {
+  const sel = document.getElementById('filter-vlan');
+  const current = sel.value;
+  const vlans = [...new Set(state.clients.map(c => c.vlan).filter(v => v != null))].sort((a,b)=>a-b);
+  sel.innerHTML = '<option value="">All VLANs</option>' +
+    vlans.map(v => `<option value="${v}"${v == current?' selected':''}>${v}</option>`).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slide-over panel
+// ─────────────────────────────────────────────────────────────────────────────
+function openPanel(c) {
+  state.selectedMac = c.mac;
+  // Update row highlights
+  document.querySelectorAll('tr.data-row').forEach(r => {
+    r.classList.toggle('selected', r.dataset.mac === c.mac);
+  });
+
+  document.getElementById('panel-title').textContent = c.hostname || c.mac || '—';
+  document.getElementById('panel-subtitle').innerHTML =
+    `<span class="mono">${esc(c.mac || '')}</span> &middot; ${sourceLabel(c.source)}`;
+
+  const content = document.getElementById('panel-content');
+  content.innerHTML = buildPanelContent(c);
+
+  document.getElementById('panel').classList.add('open');
+}
+
+function closePanel() {
+  document.getElementById('panel').classList.remove('open');
+  state.selectedMac = null;
+  document.querySelectorAll('tr.data-row.selected').forEach(r => r.classList.remove('selected'));
+}
+
+function buildPanelContent(c) {
+  let html = '';
+
+  // Overview section
+  html += `<div class="panel-section">
+    <div class="panel-section-title">Overview</div>
+    ${kvRow('Status',   c.online ? '<span style="color:var(--green)">● Online</span>' : '<span style="color:var(--gray)">● Lease only</span>', false)}
+    ${kvRow('Source',   sourceLabel(c.source), false)}
+    ${kvRow('Vendor',   c.vendor || '—', false)}
+    ${kvRow('VLAN',     c.vlan ?? '—', false)}
+  </div>`;
+
+  // Sophos section
+  if (c.sophos) {
+    const s = c.sophos;
+    html += `<div class="panel-section">
+      <div class="panel-section-title">Sophos DHCP</div>
+      ${kvRow('IP Address',   s.ip || '—', true)}
+      ${kvRow('MAC Address',  s.mac || '—', true)}
+      ${kvRow('Hostname',     s.hostname || '—', false)}
+      ${kvRow('Lease Type',   s.lease_type || '—', false)}
+      ${kvRow('Scope',        s.scope_name || s.scope || '—', false)}
+      ${kvRow('Lease Start',  s.lease_start || '—', false)}
+      ${kvRow('Lease End',    s.lease_end || '—', false)}
+    </div>`;
+  }
+
+  // UniFi section
+  if (c.unifi) {
+    const u = c.unifi;
+    const uptime = u.uptime ? formatUptime(u.uptime) : '—';
+    const connection = u.is_wired
+      ? (u.sw_port != null ? `Port ${u.sw_port}` : 'Wired')
+      : (u.essid || 'WiFi');
+
+    html += `<div class="panel-section">
+      <div class="panel-section-title">UniFi</div>
+      ${kvRow('IP Address',   u.ip || '—', true)}
+      ${kvRow('MAC Address',  u.mac || '—', true)}
+      ${kvRow('Hostname',     u.hostname || '—', false)}
+      ${kvRow('Type',         u.is_wired ? '🔌 Wired' : '📶 Wireless', false)}
+      ${u.is_wired ? kvRow('Switch Port', u.sw_port != null ? `Port ${u.sw_port}` : '—', false) : ''}
+      ${!u.is_wired ? kvRow('Access Point', u.ap_name || u.ap_mac || '—', false) : ''}
+      ${!u.is_wired ? kvRow('SSID', u.essid || '—', false) : ''}
+      ${!u.is_wired ? kvRow('Signal', u.rssi != null ? u.rssi + ' dBm' : (u.signal != null ? u.signal + ' dBm' : '—'), false) : ''}
+      ${kvRow('VLAN',       u.vlan ?? '—', false)}
+      ${kvRow('Connected',  uptime, false)}
+      ${kvRow('OUI/Vendor', u.oui || '—', false)}
+    </div>`;
+  }
+
+  return html;
+}
+
+function kvRow(label, value, copyable) {
+  const safeVal = typeof value === 'string' ? esc(value) : value;
+  const copyBtn = copyable && typeof value === 'string' && value !== '—'
+    ? `<button class="copy-btn" onclick="copyText(this,'${esc(value)}')" title="Copy">copy</button>`
+    : '';
+  return `<div class="kv-row">
+    <span class="kv-label">${esc(label)}</span>
+    <span class="kv-value">${safeVal}${copyBtn}</span>
+  </div>`;
+}
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sorting
+// ─────────────────────────────────────────────────────────────────────────────
+function initSorting() {
+  document.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (state.sortCol === col) {
+        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sortCol = col;
+        state.sortDir = 'asc';
+      }
+      document.querySelectorAll('th[data-col]').forEach(h => {
+        h.classList.remove('sort-asc', 'sort-desc');
+      });
+      th.classList.add('sort-' + state.sortDir);
+      applyFilters();
+    });
+  });
+  // Set default sort indicator
+  const defaultTh = document.querySelector('th[data-col="hostname"]');
+  if (defaultTh) defaultTh.classList.add('sort-asc');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-refresh countdown
+// ─────────────────────────────────────────────────────────────────────────────
+function startCountdown() {
+  state.countdownSec = 30;
+  if (state.countdownTimer) clearInterval(state.countdownTimer);
+  if (state.refreshTimer)   clearTimeout(state.refreshTimer);
+
+  state.countdownTimer = setInterval(() => {
+    state.countdownSec -= 1;
+    document.getElementById('countdown').textContent = state.countdownSec + 's';
+    if (state.countdownSec <= 0) {
+      clearInterval(state.countdownTimer);
+      fetchClients().then(startCountdown);
+    }
+  }, 1000);
+
+  document.getElementById('countdown').textContent = state.countdownSec + 's';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event wiring
+// ─────────────────────────────────────────────────────────────────────────────
+let searchDebounce = null;
+
+function initEvents() {
+  // Search
+  document.getElementById('search').addEventListener('input', e => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      state.search = e.target.value.trim();
+      fetchClients().then(startCountdown);
+    }, 300);
+  });
+
+  // Filters
+  ['filter-vlan', 'filter-source', 'filter-status'].forEach(id => {
+    document.getElementById(id).addEventListener('change', e => {
+      if (id === 'filter-vlan')   state.filterVlan   = e.target.value;
+      if (id === 'filter-source') state.filterSource = e.target.value;
+      if (id === 'filter-status') state.filterStatus = e.target.value;
+      fetchClients().then(startCountdown);
+    });
+  });
+
+  // Manual refresh
+  document.getElementById('refresh-btn').addEventListener('click', () => {
+    if (state.countdownTimer) clearInterval(state.countdownTimer);
+    fetchClients().then(startCountdown);
+  });
+
+  // Panel close
+  document.getElementById('panel-close').addEventListener('click', closePanel);
+
+  // Escape key
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closePanel();
+  });
+
+  // Click outside panel (on table area)
+  document.getElementById('table-wrap').addEventListener('click', e => {
+    if (!e.target.closest('tr.data-row') && state.selectedMac) closePanel();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  initSorting();
+  initEvents();
+  fetchClients().then(startCountdown);
+  fetchStats();
+});
+</script>
+</body>
+</html>

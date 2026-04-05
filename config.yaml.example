@@ -1,0 +1,24 @@
+sophos:
+  host: 192.168.1.1
+  ssh_port: 22
+  api_port: 4444
+  username: admin
+  password: "secret"
+  # Optional: separate password for WebAdmin XML API. Defaults to 'password' above.
+  # api_password: "webadmin-secret"
+  verify_ssl: false
+  poll_interval_leases: 60    # seconds between SSH lease refresh
+  poll_interval_config: 300   # seconds between XML API config refresh
+
+unifi:
+  host: 192.168.1.2           # IP or hostname (https:// prefix added automatically)
+  username: readonly@local
+  password: "secret"
+  site: default
+  verify_ssl: false
+  poll_interval: 30           # seconds between UniFi client refresh
+
+app:
+  port: 8080
+  log_level: info             # debug | info | warning | error
+  oui_update_on_start: true   # download OUI database if not present
