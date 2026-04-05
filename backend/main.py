@@ -9,6 +9,7 @@ import copy
 import json
 import logging
 import os
+import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -574,6 +575,66 @@ async def test_unifi_stream(body: Optional[UniFiConfig] = None):
         host = "https://" + host
     merged = {**cfg, "host": host}
     return _make_sse_response(lambda log_fn: UniFiClient(merged).diagnose(log_fn))
+
+
+# ---------------------------------------------------------------------------
+# Update endpoint — downloads latest code from GitHub, restarts service
+# ---------------------------------------------------------------------------
+
+@app.post("/api/update/apply", dependencies=[Depends(_require_secret)])
+async def update_apply():
+    """Run update.sh inside the container and stream output as SSE."""
+    script = Path(__file__).parent.parent / "update.sh"
+
+    async def generate():
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def run():
+            try:
+                proc = subprocess.Popen(
+                    ["bash", str(script)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line:
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait, {"msg": line, "level": "info"}
+                        )
+                proc.wait()
+                if proc.returncode != 0:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"msg": f"Update failed (exit code {proc.returncode})", "level": "err", "final": True, "ok": False},
+                    )
+                else:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"msg": "Service is restarting…", "level": "ok", "final": True, "ok": True, "restarting": True},
+                    )
+            except Exception as e:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait, {"msg": str(e), "level": "err", "final": True, "ok": False}
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        asyncio.create_task(loop.run_in_executor(_test_executor, run))
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------------------------------------------------------------------------

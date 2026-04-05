@@ -859,6 +859,20 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       </div>
     </div>
 
+    <!-- Update -->
+    <div class="settings-section">
+      <div class="settings-section-title">Update</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">
+        Downloads the latest code from GitHub, updates dependencies, and restarts the service.
+        Your <code>config.yaml</code> is preserved.
+      </p>
+      <div class="settings-test-row">
+        <button class="btn-test" id="btn-update" onclick="runUpdate()">Update to latest</button>
+        <span id="update-result" class="test-result"></span>
+      </div>
+      <div id="log-update" class="live-log" hidden></div>
+    </div>
+
     <div class="settings-footer">
       <span id="save-result" class="save-result"></span>
       <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
@@ -1377,6 +1391,10 @@ async function openSettings() {
   document.getElementById('save-result').textContent = '';
   document.getElementById('test-sophos-result').textContent = '';
   document.getElementById('test-unifi-result').textContent = '';
+  document.getElementById('update-result').textContent = '';
+  document.getElementById('update-result').className = 'test-result';
+  document.getElementById('log-update').hidden = true;
+  document.getElementById('log-update').innerHTML = '';
   try {
     const resp = await fetch('/api/config');
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1533,6 +1551,92 @@ async function saveSettings() {
   } finally {
     saveBtn.disabled = false;
   }
+}
+
+async function runUpdate() {
+  const btn = document.getElementById('btn-update');
+  const resultEl = document.getElementById('update-result');
+  const logEl = document.getElementById('log-update');
+
+  btn.disabled = true;
+  logEl.innerHTML = '';
+  logEl.hidden = false;
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Updating…';
+
+  try {
+    const resp = await fetch('/api/update/apply', {
+      method: 'POST',
+      headers: _getSecretHeaders(),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', isRestarting = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const ev = JSON.parse(part.slice(6));
+        const line = document.createElement('div');
+        line.className = 'll-' + (ev.level || 'info');
+        line.textContent = ev.msg;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+        if (ev.final) {
+          if (ev.restarting) {
+            isRestarting = true;
+            resultEl.className = 'test-result busy';
+            resultEl.textContent = 'Restarting…';
+          } else {
+            resultEl.className = 'test-result ' + (ev.ok ? 'ok' : 'err');
+            resultEl.textContent = (ev.ok ? '✓ ' : '✗ ') + ev.msg;
+          }
+        }
+      }
+    }
+
+    if (isRestarting) {
+      await _waitForRestart();
+    }
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
+    btn.disabled = false;
+  }
+}
+
+async function _waitForRestart() {
+  const logEl = document.getElementById('log-update');
+  const resultEl = document.getElementById('update-result');
+  const deadline = Date.now() + 60_000;
+  await new Promise(r => setTimeout(r, 4000));
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch('/api/config', { signal: AbortSignal.timeout(3000) });
+      if (r.ok) {
+        const line = document.createElement('div');
+        line.className = 'll-ok';
+        line.textContent = 'Service back online — reloading…';
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+        resultEl.className = 'test-result ok';
+        resultEl.textContent = '✓ Update complete';
+        await new Promise(r => setTimeout(r, 1500));
+        location.reload();
+        return;
+      }
+    } catch (_) {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  resultEl.className = 'test-result err';
+  resultEl.textContent = '✗ Service did not come back in 60s — check container';
 }
 
 async function checkSetupRequired() {
