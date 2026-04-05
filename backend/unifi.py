@@ -18,9 +18,12 @@ logger = logging.getLogger(__name__)
 
 class UniFiClient:
     def __init__(self, config: dict):
-        self.host = config["host"].rstrip("/")
-        self.username = config["username"]
-        self.password = config["password"]
+        host = config.get("host", "").rstrip("/")
+        if not host:
+            raise ValueError("UniFi host is not configured. Open Settings to add credentials.")
+        self.host = host
+        self.username = config.get("username", "")
+        self.password = config.get("password", "")
         self.site = config.get("site", "default")
         self.verify_ssl = config.get("verify_ssl", False)
         self._session = requests.Session()

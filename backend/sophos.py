@@ -11,6 +11,7 @@ import logging
 import re
 import time
 from typing import Any, Optional
+from xml.sax.saxutils import escape as xml_escape
 
 import requests
 import urllib3
@@ -55,7 +56,9 @@ def fetch_dhcp_leases_ssh(config: dict) -> list[dict]:
     if not PARAMIKO_AVAILABLE:
         raise RuntimeError("paramiko is not installed")
 
-    host = config["host"]
+    host = config.get("host", "")
+    if not host:
+        raise ValueError("Sophos host is not configured. Open Settings to add credentials.")
     port = config.get("ssh_port", 22)
     username = config["username"]
     password = config["password"]
@@ -158,8 +161,8 @@ def _api_url(config: dict) -> str:
 
 
 def _build_payload(config: dict, get_element: str) -> str:
-    username = config["username"]
-    password = config.get("api_password") or config["password"]
+    username = xml_escape(config.get("username", ""))
+    password = xml_escape(config.get("api_password") or config.get("password", ""))
     xml = (
         f"<Request>"
         f"<Login><Username>{username}</Username><Password>{password}</Password></Login>"
@@ -174,6 +177,9 @@ def fetch_dhcp_server_config(config: dict) -> dict:
     Fetch DHCPServer configuration from Sophos XML API.
     Returns dict with 'servers' (list) and 'static_entries' (list).
     """
+    host = config.get("host", "")
+    if not host:
+        raise ValueError("Sophos host is not configured. Open Settings to add credentials.")
     url = _api_url(config)
     payload = _build_payload(config, "DHCPServer")
 
@@ -182,7 +188,7 @@ def fetch_dhcp_server_config(config: dict) -> dict:
         url,
         data={"reqxml": payload},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        verify=False,
+        verify=config.get("verify_ssl", False),
         timeout=15,
     )
     resp.raise_for_status()
