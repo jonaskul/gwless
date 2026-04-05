@@ -6,6 +6,9 @@ set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; AMBER='\033[0;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 
+GWLESS_REPO="https://github.com/jonaskul/gwless"
+GWLESS_BRANCH="main"
+
 info()  { echo -e "${CYAN}[gwless]${NC} $*"; }
 ok()    { echo -e "${GREEN}[gwless]${NC} $*"; }
 warn()  { echo -e "${AMBER}[gwless]${NC} $*"; }
@@ -84,29 +87,44 @@ for ((i=1; i<=15; i++)); do
 done
 [[ $i -gt 1 ]] && echo ""
 
-# ── Copy application code ─────────────────────────────────────────────────────
-info "Copying application code into container..."
+# ── Deploy application code ───────────────────────────────────────────────────
+# When run via "bash <(curl ...)", BASH_SOURCE[0] resolves to the current
+# working directory (not the repo), so we detect whether the source tree is
+# actually present before deciding how to get the code into the container.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 pct exec "${CTID}" -- mkdir -p /opt/gwless
 
-TMPTAR="$(mktemp /tmp/gwless-XXXXXX.tar.gz)"
-tar -czf "${TMPTAR}" \
-  --exclude='.git' \
-  --exclude='*.pyc' \
-  --exclude='__pycache__' \
-  --exclude='*.egg-info' \
-  --exclude='config.yaml' \
-  -C "${SCRIPT_DIR}" .
-
-pct push "${CTID}" "${TMPTAR}" /tmp/gwless.tar.gz
-pct exec "${CTID}" -- bash -c "tar -xzf /tmp/gwless.tar.gz -C /opt/gwless && rm /tmp/gwless.tar.gz" \
-  || die "Failed to extract application code inside container."
-rm -f "${TMPTAR}"
+if [[ -f "${SCRIPT_DIR}/backend/main.py" ]]; then
+  # ── Local clone: tar and copy ────────────────────────────────────────────────
+  info "Copying local application code into container..."
+  TMPTAR="$(mktemp /tmp/gwless-XXXXXX.tar.gz)"
+  tar -czf "${TMPTAR}" \
+    --exclude='.git' \
+    --exclude='*.pyc' \
+    --exclude='__pycache__' \
+    --exclude='*.egg-info' \
+    --exclude='config.yaml' \
+    -C "${SCRIPT_DIR}" .
+  pct push "${CTID}" "${TMPTAR}" /tmp/gwless.tar.gz
+  pct exec "${CTID}" -- bash -c \
+    "tar -xzf /tmp/gwless.tar.gz -C /opt/gwless && rm /tmp/gwless.tar.gz" \
+    || die "Failed to extract application code inside container."
+  rm -f "${TMPTAR}"
+else
+  # ── Remote/curl install: download from GitHub ────────────────────────────────
+  info "Downloading gwless from GitHub (branch: ${GWLESS_BRANCH})..."
+  pct exec "${CTID}" -- bash -c "
+    apt-get install -y curl --no-install-recommends -qq &&
+    curl -fsSL '${GWLESS_REPO}/archive/refs/heads/${GWLESS_BRANCH}.tar.gz' \
+      | tar -xz --strip-components=1 -C /opt/gwless
+  " || die "Failed to download gwless from GitHub — check network and that the branch '${GWLESS_BRANCH}' exists."
+fi
 
 # ── Install Python & dependencies ─────────────────────────────────────────────
 info "Installing Python and dependencies (this may take a minute)..."
 pct exec "${CTID}" -- bash -c "
+  export DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 &&
   apt-get update -qq &&
   apt-get install -y python3 python3-pip --no-install-recommends -qq &&
   pip3 install -r /opt/gwless/requirements.txt --break-system-packages --quiet
