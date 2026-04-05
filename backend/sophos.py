@@ -267,8 +267,13 @@ def fetch_dhcp_server_config(config: dict) -> dict:
 
         servers.append(server_info)
 
-        # Static MAC reservations
-        reservations = srv.get("Static") or []
+        # Static MAC reservations — try all known SFOS element names
+        reservations = (
+            srv.get("Static")
+            or srv.get("Host")
+            or srv.get("Reservation")
+            or []
+        )
         if isinstance(reservations, dict):
             reservations = [reservations]
         for res in reservations:
@@ -276,8 +281,12 @@ def fetch_dhcp_server_config(config: dict) -> dict:
                 continue
             static_entries.append({
                 "mac": (res.get("MACAddress") or res.get("MAC", "")).lower(),
-                "ip": res.get("IPAddress") or res.get("IP", ""),
-                "hostname": res.get("Name") or res.get("Hostname", ""),
+                "ip":  res.get("IPAddress") or res.get("IP", ""),
+                "hostname": (
+                    res.get("HostName")
+                    or res.get("Name")
+                    or res.get("Hostname", "")
+                ),
                 "scope_name": server_info["name"],
                 "sophos_type": "static",
             })
@@ -399,10 +408,17 @@ def diagnose_api(config: dict, log_fn=None) -> None:
         server_list = servers_raw if isinstance(servers_raw, list) else [servers_raw]
         servers = [s for s in server_list if s]
 
-        static_count = sum(
-            len(s.get("Static", []) if isinstance(s.get("Static"), list) else ([s.get("Static")] if s.get("Static") else []))
-            for s in servers
-        )
+        for srv in servers:
+            keys = [k for k in srv.keys() if not k.startswith("@")]
+            log(f"  Server '{srv.get('@name') or srv.get('Name', '?')}': fields = {keys}")
+
+        def _count_reservations(s: dict) -> int:
+            r = s.get("Static") or s.get("Host") or s.get("Reservation") or []
+            if isinstance(r, list):
+                return len(r)
+            return 1 if r else 0
+
+        static_count = sum(_count_reservations(s) for s in servers)
         log(f"Found {len(servers)} DHCP server(s), {static_count} static reservation(s)", "ok", final=True, ok=True)
     except Exception as e:
         log(str(e), "err", final=True, ok=False)
