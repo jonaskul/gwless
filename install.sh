@@ -129,7 +129,9 @@ pct exec "${CTID}" -- bash -c "
   export DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 &&
   apt-get update -qq &&
   apt-get install -y python3 python3-pip --no-install-recommends -qq &&
-  pip3 install -r /opt/gwless/requirements.txt --break-system-packages --quiet
+  pip3 install -r /opt/gwless/requirements.txt \
+    --break-system-packages --quiet \
+    --no-warn-script-location --root-user-action=ignore
 " || die "Dependency installation failed inside container."
 
 # ── Write blank config.yaml ───────────────────────────────────────────────────

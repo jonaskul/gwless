@@ -16,7 +16,9 @@ curl -fsSL "${GWLESS_REPO}/archive/refs/heads/${GWLESS_BRANCH}.tar.gz" \
     -C "${GWLESS_DIR}"
 
 echo "[2/3] Updating Python dependencies..."
-pip3 install -r "${GWLESS_DIR}/requirements.txt" --break-system-packages --quiet
+pip3 install -r "${GWLESS_DIR}/requirements.txt" \
+  --break-system-packages --quiet \
+  --no-warn-script-location --root-user-action=ignore
 
 echo "[3/3] Scheduling service restart..."
 nohup bash -c 'sleep 3 && systemctl restart gwless' > /dev/null 2>&1 &
