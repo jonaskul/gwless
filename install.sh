@@ -115,6 +115,8 @@ else
   # ── Remote/curl install: download from GitHub ────────────────────────────────
   info "Downloading gwless from GitHub (branch: ${GWLESS_BRANCH})..."
   pct exec "${CTID}" -- bash -c "
+    export DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 &&
+    apt-get update -qq &&
     apt-get install -y curl --no-install-recommends -qq &&
     curl -fsSL '${GWLESS_REPO}/archive/refs/heads/${GWLESS_BRANCH}.tar.gz' \
       | tar -xz --strip-components=1 -C /opt/gwless
