@@ -20,58 +20,27 @@ echo "  ╔═══════════════════════
 echo "  ║   Gwless — Network Dashboard Installer    ║"
 echo "  ╚═══════════════════════════════════════════╝"
 echo ""
+info "Credentials are configured from the web UI after installation."
+echo ""
 
 # ── Find next CTID ────────────────────────────────────────────────────────────
 CTID=$(pvesh get /cluster/nextid)
 info "Using container ID: ${CTID}"
 
-# ── Debian 12 template ────────────────────────────────────────────────────────
+# ── Debian 13 template ────────────────────────────────────────────────────────
 TEMPLATE_DIR="/var/lib/vz/template/cache"
-TEMPLATE=$(ls "${TEMPLATE_DIR}"/debian-12-standard_*.tar.zst 2>/dev/null | sort -V | tail -1 || true)
+TEMPLATE=$(ls "${TEMPLATE_DIR}"/debian-13-standard_*.tar.zst 2>/dev/null | sort -V | tail -1 || true)
 
 if [[ -z "${TEMPLATE}" ]]; then
-  info "Debian 12 template not found — downloading..."
+  info "Debian 13 template not found — downloading..."
   pveam update
-  DEBIAN_PKG=$(pveam available --section system | grep 'debian-12-standard' | sort -V | tail -1 | awk '{print $2}')
-  [[ -n "${DEBIAN_PKG}" ]] || die "Could not find debian-12-standard in pveam available."
+  DEBIAN_PKG=$(pveam available --section system | grep 'debian-13-standard' | sort -V | tail -1 | awk '{print $2}')
+  [[ -n "${DEBIAN_PKG}" ]] || die "Could not find debian-13-standard in pveam available."
   pveam download local "${DEBIAN_PKG}"
-  TEMPLATE=$(ls "${TEMPLATE_DIR}"/debian-12-standard_*.tar.zst | sort -V | tail -1)
+  TEMPLATE=$(ls "${TEMPLATE_DIR}"/debian-13-standard_*.tar.zst | sort -V | tail -1)
 fi
 
 info "Using template: ${TEMPLATE}"
-
-# ── Interactive config ────────────────────────────────────────────────────────
-echo ""
-echo "  Configure your network sources:"
-echo "  ─────────────────────────────────────────────"
-echo ""
-
-read -r -p "  Sophos host/IP: " SOPHOS_HOST
-[[ -n "${SOPHOS_HOST}" ]] || die "Sophos host is required."
-
-read -r -p "  Sophos username [admin]: " SOPHOS_USER
-SOPHOS_USER="${SOPHOS_USER:-admin}"
-
-read -r -s -p "  Sophos SSH password: " SOPHOS_SSH_PASS; echo
-[[ -n "${SOPHOS_SSH_PASS}" ]] || die "Sophos SSH password is required."
-
-read -r -s -p "  Sophos WebAdmin API password (blank = same as SSH): " SOPHOS_API_PASS; echo
-SOPHOS_API_PASS="${SOPHOS_API_PASS:-${SOPHOS_SSH_PASS}}"
-
-echo ""
-read -r -p "  UniFi host/IP: " UNIFI_HOST
-[[ -n "${UNIFI_HOST}" ]] || die "UniFi host is required."
-
-read -r -p "  UniFi username: " UNIFI_USER
-[[ -n "${UNIFI_USER}" ]] || die "UniFi username is required."
-
-read -r -s -p "  UniFi password: " UNIFI_PASS; echo
-[[ -n "${UNIFI_PASS}" ]] || die "UniFi password is required."
-
-read -r -p "  UniFi site [default]: " UNIFI_SITE
-UNIFI_SITE="${UNIFI_SITE:-default}"
-
-echo ""
 info "Creating LXC container ${CTID}..."
 
 # ── Create container ──────────────────────────────────────────────────────────
@@ -90,62 +59,38 @@ info "Starting container..."
 pct start "${CTID}"
 sleep 8
 
-# ── Install Python & dependencies ─────────────────────────────────────────────
-info "Installing Python and dependencies (this may take a minute)..."
-pct exec "${CTID}" -- bash -c "
-  apt-get update -qq &&
-  apt-get install -y python3 python3-pip --no-install-recommends -qq &&
-  pip3 install fastapi 'uvicorn[standard]' paramiko requests pyyaml xmltodict aiofiles \
-    --break-system-packages --quiet
-"
-
 # ── Copy application code ─────────────────────────────────────────────────────
 info "Copying application code into container..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Create app directory
 pct exec "${CTID}" -- mkdir -p /opt/gwless
 
-# Pack and push the codebase
 TMPTAR="$(mktemp /tmp/gwless-XXXXXX.tar.gz)"
 tar -czf "${TMPTAR}" \
   --exclude='.git' \
   --exclude='*.pyc' \
   --exclude='__pycache__' \
   --exclude='*.egg-info' \
+  --exclude='config.yaml' \
   -C "${SCRIPT_DIR}" .
 
 pct push "${CTID}" "${TMPTAR}" /tmp/gwless.tar.gz
-pct exec "${CTID}" -- bash -c "tar -xzf /tmp/gwless.tar.gz -C /opt/gwless && rm /tmp/gwless.tar.gz"
+pct exec "${CTID}" -- bash -c "tar -xzf /tmp/gwless.tar.gz -C /opt/gwless && rm /tmp/gwless.tar.gz" \
+  || die "Failed to extract application code inside container."
 rm -f "${TMPTAR}"
 
-# ── Write config.yaml ─────────────────────────────────────────────────────────
-info "Writing config.yaml..."
-pct exec "${CTID}" -- bash -c "cat > /opt/gwless/config.yaml" <<CONFEOF
-sophos:
-  host: ${SOPHOS_HOST}
-  ssh_port: 22
-  api_port: 4444
-  username: ${SOPHOS_USER}
-  password: "${SOPHOS_SSH_PASS}"
-  api_password: "${SOPHOS_API_PASS}"
-  verify_ssl: false
-  poll_interval_leases: 60
-  poll_interval_config: 300
+# ── Install Python & dependencies ─────────────────────────────────────────────
+info "Installing Python and dependencies (this may take a minute)..."
+pct exec "${CTID}" -- bash -c "
+  apt-get update -qq &&
+  apt-get install -y python3 python3-pip --no-install-recommends -qq &&
+  pip3 install -r /opt/gwless/requirements.txt --break-system-packages --quiet
+" || die "Dependency installation failed inside container."
 
-unifi:
-  host: ${UNIFI_HOST}
-  username: ${UNIFI_USER}
-  password: "${UNIFI_PASS}"
-  site: ${UNIFI_SITE}
-  verify_ssl: false
-  poll_interval: 30
-
-app:
-  port: 8080
-  log_level: info
-  oui_update_on_start: true
-CONFEOF
+# ── Write blank config.yaml ───────────────────────────────────────────────────
+info "Writing default config.yaml..."
+pct exec "${CTID}" -- bash -c "cp /opt/gwless/config.yaml.example /opt/gwless/config.yaml" \
+  || die "config.yaml.example not found — cannot create default config."
 
 # ── Install systemd service ───────────────────────────────────────────────────
 info "Installing systemd service..."
@@ -159,16 +104,21 @@ sleep 3
 CONTAINER_IP=$(pct exec "${CTID}" -- hostname -I 2>/dev/null | awk '{print $1}' || echo "unknown")
 
 echo ""
-ok "╔══════════════════════════════════════════════════╗"
-ok "║   Gwless installed successfully!                 ║"
-ok "╠══════════════════════════════════════════════════╣"
-ok "║                                                  ║"
-ok "║   Dashboard:  http://${CONTAINER_IP}:8080         "
-ok "║   CTID:       ${CTID}                             "
-ok "║                                                  ║"
-ok "║   Manage:                                        ║"
-ok "║   pct exec ${CTID} -- systemctl restart gwless   "
-ok "║   pct exec ${CTID} -- journalctl -u gwless -f    "
-ok "║                                                  ║"
-ok "╚══════════════════════════════════════════════════╝"
+ok "╔══════════════════════════════════════════════════════════╗"
+ok "║   Gwless installed successfully!                         ║"
+ok "╠══════════════════════════════════════════════════════════╣"
+ok "║                                                          ║"
+ok "║   Dashboard:  http://${CONTAINER_IP}:8080                 "
+ok "║   CTID:       ${CTID}                                     "
+ok "║                                                          ║"
+ok "║   Open the dashboard and click the ⚙ Settings button     ║"
+ok "║   to configure Sophos and UniFi credentials.             ║"
+ok "║   Use the Test buttons to verify connectivity            ║"
+ok "║   before saving.                                         ║"
+ok "║                                                          ║"
+ok "║   Manage:                                                ║"
+ok "║   pct exec ${CTID} -- systemctl restart gwless           "
+ok "║   pct exec ${CTID} -- journalctl -u gwless -f            "
+ok "║                                                          ║"
+ok "╚══════════════════════════════════════════════════════════╝"
 echo ""

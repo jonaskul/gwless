@@ -1,24 +1,24 @@
 sophos:
-  host: 192.168.1.1
+  host: ""                      # Sophos XGS IP or hostname — configure in the web UI
   ssh_port: 22
   api_port: 4444
   username: admin
-  password: "secret"
-  # Optional: separate password for WebAdmin XML API. Defaults to 'password' above.
-  # api_password: "webadmin-secret"
+  password: ""                  # Set via Settings in the dashboard
+  # api_password: ""            # Optional: separate WebAdmin API password. Defaults to 'password' above.
   verify_ssl: false
-  poll_interval_leases: 60    # seconds between SSH lease refresh
-  poll_interval_config: 300   # seconds between XML API config refresh
+  poll_interval_leases: 60      # seconds between SSH lease refresh
+  poll_interval_config: 300     # seconds between XML API config refresh
 
 unifi:
-  host: 192.168.1.2           # IP or hostname (https:// prefix added automatically)
-  username: readonly@local
-  password: "secret"
+  host: ""                      # UniFi controller IP or hostname — configure in the web UI
+  username: ""
+  password: ""                  # Set via Settings in the dashboard
   site: default
   verify_ssl: false
-  poll_interval: 30           # seconds between UniFi client refresh
+  poll_interval: 30             # seconds between UniFi client refresh
 
 app:
   port: 8080
-  log_level: info             # debug | info | warning | error
-  oui_update_on_start: true   # download OUI database if not present
+  log_level: info               # debug | info | warning | error
+                                # Note: log level in gwless.service is separate; change ExecStart there too.
+  oui_update_on_start: true     # download OUI vendor database if not present

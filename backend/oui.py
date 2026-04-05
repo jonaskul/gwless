@@ -35,12 +35,12 @@ def _load_db() -> dict:
                 # Support both list-of-dicts and dict formats
                 if isinstance(raw, list):
                     _oui_db = {
-                        entry.get("macPrefix", "").upper().replace(":", "").replace("-", ""): entry.get("vendorName", "Unknown")
+                        entry.get("macPrefix", "").upper().replace(":", "").replace("-", "").replace(".", ""): entry.get("vendorName", "Unknown")
                         for entry in raw
                         if entry.get("macPrefix")
                     }
                 elif isinstance(raw, dict):
-                    _oui_db = {k.upper().replace(":", "").replace("-", ""): v for k, v in raw.items()}
+                    _oui_db = {k.upper().replace(":", "").replace("-", "").replace(".", ""): v for k, v in raw.items()}
                 else:
                     _oui_db = {}
                 _oui_loaded_at = time.time()

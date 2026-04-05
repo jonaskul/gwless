@@ -47,12 +47,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/jonaskul/gwless/main/install
 
 The installer will:
 1. Find the next available CTID
-2. Download Debian 12 template if needed
+2. Download Debian 13 template if needed
 3. Create an unprivileged LXC (512 MB RAM, 4 GB disk)
-4. Ask for Sophos and UniFi credentials interactively
-5. Install Python dependencies
-6. Copy app code and write `config.yaml`
-7. Enable and start the `gwless` systemd service
+4. Install Python dependencies
+5. Copy app code and write a blank `config.yaml`
+6. Enable and start the `gwless` systemd service
+
+**No credentials are needed during install.** Open the dashboard URL printed at the end, click **⚙ Settings**, enter your Sophos and UniFi credentials, and use the **Test** buttons to verify connectivity before saving.
 
 ---
 
@@ -94,6 +95,11 @@ Key settings:
 | `GET /api/clients/{mac}` | Full detail for one client |
 | `GET /api/scopes` | DHCP scopes with used/total lease counts |
 | `GET /api/stats` | Summary counts and data freshness |
+| `GET /api/config` | Current config (passwords masked) |
+| `POST /api/config` | Save new config |
+| `POST /api/test/sophos-ssh` | Test Sophos SSH connectivity |
+| `POST /api/test/sophos-api` | Test Sophos XML API connectivity |
+| `POST /api/test/unifi` | Test UniFi connectivity |
 | `GET /api/refresh` | Invalidate all caches |
 | `GET /health` | Source health: `ok` / `stale` / `error` |
 
@@ -108,7 +114,7 @@ pct exec <CTID> -- systemctl restart gwless
 # Follow logs
 pct exec <CTID> -- journalctl -u gwless -f
 
-# Edit config
+# Edit config (or use the ⚙ Settings panel in the dashboard)
 pct exec <CTID> -- nano /opt/gwless/config.yaml
 pct exec <CTID> -- systemctl restart gwless
 ```
@@ -120,7 +126,7 @@ pct exec <CTID> -- systemctl restart gwless
 - **Backend**: Python 3 / FastAPI / paramiko / requests / xmltodict
 - **Frontend**: Single-file HTML — vanilla JS, no build step
 - **Fonts**: Inter + JetBrains Mono (Google Fonts)
-- **Container**: Debian 12 LXC on Proxmox VE
+- **Container**: Debian 13 LXC on Proxmox VE
 
 ---
 
