@@ -803,6 +803,12 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
           <input id="a-oui" type="checkbox" checked>
         </div>
       </div>
+      <div class="settings-row single">
+        <div class="settings-field">
+          <label>API Secret <span style="color:var(--text-muted);font-weight:400">(optional — protects Settings from other LAN users; set <code style="font-size:11px">app.secret</code> in config.yaml to enable)</span></label>
+          <input id="a-secret" type="password" placeholder="leave blank if not configured" autocomplete="new-password">
+        </div>
+      </div>
     </div>
 
     <div class="settings-footer">
@@ -1300,6 +1306,11 @@ function initEvents() {
 // ─────────────────────────────────────────────────────────────────────────────
 const MASKED = '••••••••';
 
+function _getSecretHeaders() {
+  const secret = sessionStorage.getItem('gwlessSecret') || '';
+  return secret ? { 'X-Gwless-Secret': secret } : {};
+}
+
 async function openSettings() {
   document.getElementById('save-result').textContent = '';
   document.getElementById('test-sophos-result').textContent = '';
@@ -1328,6 +1339,7 @@ async function openSettings() {
     const a = cfg.app || {};
     document.getElementById('a-loglevel').value = a.log_level || 'info';
     document.getElementById('a-oui').checked    = a.oui_update_on_start !== false;
+    document.getElementById('a-secret').value   = sessionStorage.getItem('gwlessSecret') || '';
   } catch (e) {
     console.error('Failed to load config:', e);
   }
@@ -1382,7 +1394,7 @@ async function testConnection(target) {
 
     const resp = await fetch('/api/test/' + target, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ..._getSecretHeaders() },
       body: JSON.stringify(body),
     });
     const data = await resp.json();
@@ -1403,6 +1415,9 @@ async function saveSettings() {
   saveResult.className = 'save-result';
   saveResult.textContent = 'Saving…';
 
+  const secretVal = document.getElementById('a-secret').value;
+  sessionStorage.setItem('gwlessSecret', secretVal);
+
   const payload = {
     sophos: _collectSophosPayload(),
     unifi:  _collectUniFiPayload(),
@@ -1416,7 +1431,7 @@ async function saveSettings() {
   try {
     const resp = await fetch('/api/config', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ..._getSecretHeaders() },
       body: JSON.stringify(payload),
     });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1424,7 +1439,7 @@ async function saveSettings() {
     saveResult.textContent = '✓ Saved';
     document.getElementById('settings-btn').classList.remove('needs-setup');
     // Invalidate caches so dashboard refreshes with new credentials
-    await fetch('/api/refresh');
+    await fetch('/api/refresh', { headers: _getSecretHeaders() });
     setTimeout(closeSettings, 800);
     fetchClients().then(startCountdown);
   } catch (e) {

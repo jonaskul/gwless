@@ -8,6 +8,7 @@ sophos:
   verify_ssl: false
   poll_interval_leases: 60      # seconds between SSH lease refresh
   poll_interval_config: 300     # seconds between XML API config refresh
+  # ssh_host_key: ""            # Auto-populated on first SSH connect (TOFU). Clear to re-trust a changed key.
 
 unifi:
   host: ""                      # UniFi controller IP or hostname — configure in the web UI
@@ -22,3 +23,4 @@ app:
   log_level: info               # debug | info | warning | error
                                 # Note: log level in gwless.service is separate; change ExecStart there too.
   oui_update_on_start: true     # download OUI vendor database if not present
+  # secret: ""                  # Optional: protects Settings/refresh endpoints. Set here, enter in the UI Secret field.

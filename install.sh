@@ -134,7 +134,7 @@ pct exec "${CTID}" -- bash -c "
 
 # ── Write blank config.yaml ───────────────────────────────────────────────────
 info "Writing default config.yaml..."
-pct exec "${CTID}" -- bash -c "cp /opt/gwless/config.yaml.example /opt/gwless/config.yaml" \
+pct exec "${CTID}" -- bash -c "cp /opt/gwless/config.yaml.example /opt/gwless/config.yaml && chmod 600 /opt/gwless/config.yaml" \
   || die "config.yaml.example not found — cannot create default config."
 
 # ── Install systemd service ───────────────────────────────────────────────────

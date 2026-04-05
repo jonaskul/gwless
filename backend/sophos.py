@@ -30,6 +30,33 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
+# SSH host key: Trust On First Use (TOFU) policy
+# ---------------------------------------------------------------------------
+
+if PARAMIKO_AVAILABLE:
+    class _TOFUPolicy(paramiko.MissingHostKeyPolicy):
+        """
+        On first connect: accept the key and invoke save_callback(fingerprint).
+        On subsequent connects: reject if fingerprint doesn't match saved value.
+        """
+        def __init__(self, saved_fingerprint: str, save_callback):
+            self._saved = saved_fingerprint
+            self._save_callback = save_callback
+
+        def missing_host_key(self, client, hostname, key):
+            fingerprint = key.get_fingerprint().hex()
+            if not self._saved:
+                logger.info("TOFU: trusting SSH host key for %s (%s)", hostname, fingerprint)
+                self._save_callback(fingerprint)
+            elif fingerprint != self._saved:
+                raise ValueError(
+                    f"SSH host key mismatch for {hostname}. "
+                    f"Expected {self._saved}, got {fingerprint}. "
+                    f"If the device changed, clear 'ssh_host_key' in config.yaml to re-trust."
+                )
+
+
+# ---------------------------------------------------------------------------
 # SSH — dynamic leases
 # ---------------------------------------------------------------------------
 
@@ -63,10 +90,15 @@ def fetch_dhcp_leases_ssh(config: dict) -> list[dict]:
     username = config["username"]
     password = config["password"]
 
-    logger.debug("SSH connecting to %s:%s", host, port)
+    logger.debug("SSH connecting to Sophos device")
 
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    saved_key = config.get("ssh_host_key", "")
+    save_cb   = config.get("_save_host_key_cb")  # injected by main.py for TOFU
+    if save_cb is not None:
+        client.set_missing_host_key_policy(_TOFUPolicy(saved_key, save_cb))
+    else:
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
     try:
         client.connect(
             host,
@@ -161,6 +193,9 @@ def _api_url(config: dict) -> str:
 
 
 def _build_payload(config: dict, get_element: str) -> str:
+    _ALLOWED_ELEMENTS = {"DHCPServer"}
+    if get_element not in _ALLOWED_ELEMENTS:
+        raise ValueError(f"Invalid element: {get_element!r}. Allowed: {_ALLOWED_ELEMENTS}")
     username = xml_escape(config.get("username", ""))
     password = xml_escape(config.get("api_password") or config.get("password", ""))
     xml = (

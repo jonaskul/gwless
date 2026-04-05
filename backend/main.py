@@ -12,8 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -63,6 +62,7 @@ def _save_config(cfg: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+    path.chmod(0o600)
     logger.info("Config saved to %s", path)
 
 
@@ -77,12 +77,13 @@ CONFIG.setdefault("sophos", {
     "host": "", "ssh_port": 22, "api_port": 4444,
     "username": "admin", "password": "", "api_password": "",
     "verify_ssl": False, "poll_interval_leases": 60, "poll_interval_config": 300,
+    "ssh_host_key": "",
 })
 CONFIG.setdefault("unifi", {
     "host": "", "username": "", "password": "",
     "site": "default", "verify_ssl": False, "poll_interval": 30,
 })
-CONFIG.setdefault("app", {"port": 8080, "log_level": "info", "oui_update_on_start": True})
+CONFIG.setdefault("app", {"port": 8080, "log_level": "info", "oui_update_on_start": True, "secret": ""})
 
 # ---------------------------------------------------------------------------
 # Caches
@@ -115,7 +116,14 @@ def _get_sophos_leases() -> list[dict]:
         return entry.data
     try:
         from .sophos import fetch_dhcp_leases_ssh
-        leases = fetch_dhcp_leases_ssh(CONFIG["sophos"])
+
+        def _save_host_key(fingerprint: str) -> None:
+            CONFIG["sophos"]["ssh_host_key"] = fingerprint
+            _save_config(CONFIG)
+            logger.info("TOFU: SSH host key saved to config")
+
+        sophos_cfg = {**CONFIG["sophos"], "_save_host_key_cb": _save_host_key}
+        leases = fetch_dhcp_leases_ssh(sophos_cfg)
         _cache_leases.set(leases)
         _sophos_error = None
         return leases
@@ -204,12 +212,20 @@ def _get_merged_clients() -> list[dict]:
 
 app = FastAPI(title="Gwless", description="DHCP & Network Client Dashboard", version="1.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No CORS middleware — frontend is served from the same origin (StaticFiles mount).
+# The browser's default same-origin policy protects all API endpoints.
+
+_VALID_SOURCE = {"sophos_only", "unifi_only", "both"}
+_VALID_STATUS = {"online", "offline"}
+
+
+def _require_secret(x_gwless_secret: Optional[str] = Header(None)) -> None:
+    """FastAPI dependency: enforce X-Gwless-Secret when app.secret is configured."""
+    secret = CONFIG.get("app", {}).get("secret", "")
+    if not secret:
+        return  # no secret configured — open access
+    if x_gwless_secret != secret:
+        raise HTTPException(status_code=403, detail="Invalid or missing X-Gwless-Secret header")
 
 
 @app.on_event("startup")
@@ -273,6 +289,11 @@ async def get_clients(
     source: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
 ):
+    if source and source not in _VALID_SOURCE:
+        raise HTTPException(status_code=400, detail=f"Invalid source. Must be one of: {', '.join(sorted(_VALID_SOURCE))}")
+    if status and status not in _VALID_STATUS:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(sorted(_VALID_STATUS))}")
+
     clients = _get_merged_clients()
 
     if q:
@@ -317,7 +338,7 @@ async def get_scopes():
     return {"scopes": scopes, "stale": _cache_sophos_cfg.is_stale, "last_updated": _cache_sophos_cfg.last_updated}
 
 
-@app.get("/api/refresh")
+@app.get("/api/refresh", dependencies=[Depends(_require_secret)])
 async def force_refresh():
     _cache_leases.invalidate()
     _cache_sophos_cfg.invalidate()
@@ -330,7 +351,7 @@ async def force_refresh():
 # ---------------------------------------------------------------------------
 
 def _masked_config() -> dict:
-    """Return config with passwords replaced by a sentinel for the UI."""
+    """Return config with passwords/secret replaced by a sentinel for the UI."""
     cfg = copy.deepcopy(CONFIG)
     MASKED = "••••••••"
     if cfg.get("sophos", {}).get("password"):
@@ -339,6 +360,10 @@ def _masked_config() -> dict:
         cfg["sophos"]["api_password"] = MASKED
     if cfg.get("unifi", {}).get("password"):
         cfg["unifi"]["password"] = MASKED
+    if cfg.get("app", {}).get("secret"):
+        cfg["app"]["secret"] = MASKED
+    # Never expose internal callback
+    cfg.get("sophos", {}).pop("_save_host_key_cb", None)
     return cfg
 
 
@@ -358,6 +383,7 @@ class SophosConfig(BaseModel):
     verify_ssl:         bool = False
     poll_interval_leases: int = 60
     poll_interval_config: int = 300
+    ssh_host_key:       str  = ""
 
 
 class UniFiConfig(BaseModel):
@@ -373,6 +399,7 @@ class AppConfig(BaseModel):
     port:               int  = 8080
     log_level:          str  = "info"
     oui_update_on_start: bool = True
+    secret:             str  = ""
 
 
 class ConfigPayload(BaseModel):
@@ -384,7 +411,7 @@ class ConfigPayload(BaseModel):
 MASKED_SENTINEL = "••••••••"
 
 
-@app.post("/api/config")
+@app.post("/api/config", dependencies=[Depends(_require_secret)])
 async def save_config(payload: ConfigPayload):
     """
     Save configuration. Password fields containing the masked sentinel are
@@ -403,6 +430,9 @@ async def save_config(payload: ConfigPayload):
     new_cfg["sophos"]["password"]     = _keep_if_masked(new_cfg["sophos"]["password"],     "sophos", "password")
     new_cfg["sophos"]["api_password"] = _keep_if_masked(new_cfg["sophos"]["api_password"], "sophos", "api_password")
     new_cfg["unifi"]["password"]      = _keep_if_masked(new_cfg["unifi"]["password"],      "unifi",  "password")
+    new_cfg["app"]["secret"]          = _keep_if_masked(new_cfg["app"]["secret"],          "app",    "secret")
+    # Preserve TOFU key — UI sends it back as-is (read-only field)
+    new_cfg["sophos"]["ssh_host_key"] = new_cfg["sophos"].get("ssh_host_key") or CONFIG.get("sophos", {}).get("ssh_host_key", "")
 
     _save_config(new_cfg)
     CONFIG = new_cfg
@@ -436,7 +466,7 @@ def _resolve_unifi_cfg(body: Optional[UniFiConfig]) -> dict:
     return d
 
 
-@app.post("/api/test/sophos-ssh")
+@app.post("/api/test/sophos-ssh", dependencies=[Depends(_require_secret)])
 async def test_sophos_ssh(body: Optional[SophosConfig] = None):
     """Test Sophos SSH connectivity. Accepts inline config or uses saved config."""
     try:
@@ -447,7 +477,7 @@ async def test_sophos_ssh(body: Optional[SophosConfig] = None):
         return {"ok": False, "message": str(e)}
 
 
-@app.post("/api/test/sophos-api")
+@app.post("/api/test/sophos-api", dependencies=[Depends(_require_secret)])
 async def test_sophos_api(body: Optional[SophosConfig] = None):
     """Test Sophos XML API connectivity. Accepts inline config or uses saved config."""
     try:
@@ -460,7 +490,7 @@ async def test_sophos_api(body: Optional[SophosConfig] = None):
         return {"ok": False, "message": str(e)}
 
 
-@app.post("/api/test/unifi")
+@app.post("/api/test/unifi", dependencies=[Depends(_require_secret)])
 async def test_unifi(body: Optional[UniFiConfig] = None):
     """Test UniFi API connectivity. Accepts inline config or uses saved config."""
     try:
