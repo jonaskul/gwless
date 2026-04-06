@@ -1,3 +1,7 @@
+## v0.0.35 — 2026-04-06
+
+- fix: vlan_map not defined in diagnose_api — fetch it there too
+
 ## v0.0.34 — 2026-04-06
 
 - feat: fetch VLAN IDs from Sophos and attach to leases
