@@ -429,6 +429,7 @@ async def syslog_status():
         "lease_count": len(_syslog_receiver.get_leases()),
         "messages_received": _syslog_receiver.messages_received,
         "last_event_ts": _syslog_receiver.last_event_ts,
+        "recent_raw": _syslog_receiver.get_recent_raw(),
     }
 
 

@@ -17,6 +17,7 @@ import re
 import socket
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from typing import Optional
 
@@ -67,6 +68,7 @@ class SyslogReceiver:
         self.messages_received: int = 0
 
         self._leases: dict[str, dict] = {}   # mac → lease dict (with internal _keys)
+        self._recent_raw: deque[str] = deque(maxlen=20)
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -133,6 +135,8 @@ class SyslogReceiver:
 
     def _handle_message(self, msg: str, addr: tuple) -> None:
         self.messages_received += 1
+        with self._lock:
+            self._recent_raw.append(msg[:300])
 
         fields = _parse_kv(msg)
 
@@ -207,3 +211,8 @@ class SyslogReceiver:
                 {k: v for k, v in lease.items() if not k.startswith("_")}
                 for lease in active.values()
             ]
+
+    def get_recent_raw(self) -> list[str]:
+        """Return the last up to 20 raw syslog messages received (any type)."""
+        with self._lock:
+            return list(self._recent_raw)

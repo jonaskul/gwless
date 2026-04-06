@@ -1602,9 +1602,16 @@ async function _refreshSyslogStatus() {
     } else if (!d.running) {
       el.textContent = 'Enabled but not running (check logs)';
       el.style.color = 'var(--red, #e74c3c)';
-    } else if (d.last_event_ts == null) {
-      el.textContent = `Listening on port ${d.port} — no events received yet`;
+    } else if (d.last_event_ts == null && d.messages_received === 0) {
+      el.textContent = `Listening on port ${d.port} — no messages received yet`;
       el.style.color = 'var(--amber, #f39c12)';
+    } else if (d.last_event_ts == null && d.messages_received > 0) {
+      el.style.color = 'var(--amber, #f39c12)';
+      let html = `Mottar meldinger (${d.messages_received} totalt) men ingen DHCP-events funnet — sjekk rå logg:`;
+      if (d.recent_raw && d.recent_raw.length) {
+        html += `<pre style="font-size:10px;overflow-x:auto;max-height:120px;margin:4px 0 0;white-space:pre-wrap;word-break:break-all;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text)">${d.recent_raw.map(l => l.replace(/&/g,'&amp;').replace(/</g,'&lt;')).join('\n')}</pre>`;
+      }
+      el.innerHTML = html;
     } else {
       const ago = Math.round(Date.now() / 1000 - d.last_event_ts);
       const agoStr = ago < 60 ? `${ago}s ago` : `${Math.round(ago/60)}m ago`;
