@@ -1,3 +1,7 @@
+## v0.0.5 — 2026-04-06
+
+- fix: pre-push hook grep no-match with set -euo pipefail
+
 ## v0.0.4 — 2026-04-06
 
 - (no code changes)
