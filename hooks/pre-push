@@ -25,7 +25,13 @@ fi
 commits=$(git log --pretty=format:"- %s" "$range" 2>/dev/null \
     | grep -v "^- chore: bump version" || true)
 
-# ── Write new version ─────────────────────────────────────────────────────────
+# ── Skip bump if no real commits since last bump ──────────────────────────────
+if [ -z "$commits" ]; then
+    printf '[gwless] No code changes since last bump, skipping version increment\n'
+    exit 0
+fi
+
+
 printf '%s\n' "$new_version" > "$VERSION_FILE"
 
 # ── Prepend changelog entry ───────────────────────────────────────────────────
