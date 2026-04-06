@@ -1360,7 +1360,7 @@ function buildPanelContent(c) {
   // Overview section
   html += `<div class="panel-section">
     <div class="panel-section-title">Overview</div>
-    ${kvRow('Status',   c.online ? '<span style="color:var(--green)">● Online</span>' : '<span style="color:var(--gray)">● Lease only</span>', false)}
+    ${kvRow('Status',   c.online ? '<span style="color:var(--green)">● Online</span>' : '<span style="color:var(--gray)">● Lease only</span>', false, true)}
     ${kvRow('Source',   sourceLabel(c.source), false)}
     ${kvRow('Vendor',   c.vendor || '—', false)}
     ${kvRow('VLAN',     c.vlan ?? '—', false)}
@@ -1475,8 +1475,8 @@ function closeEvents() {
   document.getElementById('events-overlay').classList.remove('open');
 }
 
-function kvRow(label, value, copyable) {
-  const safeVal = typeof value === 'string' ? esc(value) : value;
+function kvRow(label, value, copyable, raw) {
+  const safeVal = raw || typeof value !== 'string' ? value : esc(value);
   const copyBtn = copyable && typeof value === 'string' && value !== '—'
     ? `<button class="copy-btn" data-copy="${esc(value)}" onclick="copyText(this)" title="Copy">copy</button>`
     : '';
