@@ -1,3 +1,7 @@
+## v0.0.20 — 2026-04-06
+
+- fix: syslog DHCP parser — broader status matching, better diagnostics
+
 ## v0.0.19 — 2026-04-06
 
 - (no code changes)
