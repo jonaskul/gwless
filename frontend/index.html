@@ -663,6 +663,26 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   border-top: 1px solid var(--border);
   margin-top: 4px;
 }
+.settings-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 6px 16px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.settings-tab-btn:hover { color: var(--text); }
+.settings-tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
 .btn-cancel {
   background: none;
   border: 1px solid var(--border);
@@ -817,11 +837,15 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 <div id="settings-overlay">
   <div id="settings-modal">
     <h2>⚙ Settings</h2>
-    <p class="settings-subtitle">Configure your Sophos and UniFi credentials. Use the Test buttons to verify connectivity before saving.</p>
-
+    <div class="settings-tabs">
+      <button class="settings-tab-btn active" onclick="switchTab('unifi')">UniFi</button>
+      <button class="settings-tab-btn" onclick="switchTab('sophos')">Sophos</button>
+      <button class="settings-tab-btn" onclick="switchTab('app')">App</button>
+      <button class="settings-tab-btn" onclick="switchTab('update')">Update</button>
+    </div>
 
     <!-- Sophos -->
-    <div class="settings-section">
+    <div class="settings-section" data-tab="sophos" style="display:none">
       <div class="settings-section-title">Sophos XGS — DHCP Source</div>
       <div class="settings-row">
         <div class="settings-field">
@@ -866,7 +890,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     </div>
 
     <!-- Syslog -->
-    <div class="settings-section">
+    <div class="settings-section" data-tab="sophos" style="display:none">
       <div class="settings-section-title">Syslog DHCP Events</div>
       <p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">
         Gwless can listen for UDP syslog messages from Sophos SFOS to track DHCP leases in real time —
@@ -910,7 +934,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     </div>
 
     <!-- UniFi -->
-    <div class="settings-section">
+    <div class="settings-section" data-tab="unifi">
       <div class="settings-section-title">UniFi Network Application v10</div>
       <div class="settings-row">
         <div class="settings-field">
@@ -948,7 +972,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     </div>
 
     <!-- App -->
-    <div class="settings-section">
+    <div class="settings-section" data-tab="app" style="display:none">
       <div class="settings-section-title">Application</div>
       <div class="settings-row">
         <div class="settings-field">
@@ -974,7 +998,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     </div>
 
     <!-- Update -->
-    <div class="settings-section">
+    <div class="settings-section" data-tab="update" style="display:none">
       <div class="settings-section-title">Update</div>
       <p style="color:var(--text-muted);font-size:12px;margin:0 0 8px">
         Downloads the latest code from GitHub, updates dependencies, and restarts the service.
@@ -1165,7 +1189,7 @@ function buildRow(c) {
   const connection = connectionLabel(c);
 
   tr.innerHTML = `
-    <td class="hostname" title="${esc(c.hostname || c.mac)}">${esc(c.hostname || '<span style="color:var(--text-muted)">—</span>')}</td>
+    <td class="hostname" title="${esc(c.hostname || c.mac)}">${c.hostname ? esc(c.hostname) : `<span style="color:var(--text-muted);font-size:11px">${esc(c.mac)}</span>`}</td>
     <td class="mono">${esc(c.ip || '—')}</td>
     <td class="mono" style="font-size:11px">${esc(c.mac || '—')}</td>
     <td style="color:var(--text-muted);max-width:130px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.vendor || '')}">${esc(c.vendor || '—')}</td>
@@ -1611,7 +1635,7 @@ async function _refreshSyslogStatus() {
       el.style.color = 'var(--amber, #f39c12)';
     } else if (d.last_event_ts == null && d.messages_received > 0) {
       el.style.color = 'var(--amber, #f39c12)';
-      let html = `Mottar meldinger (${d.messages_received} totalt) men ingen DHCP-events funnet — sjekk rå logg:`;
+      let html = `Receiving messages (${d.messages_received} total) but no DHCP events matched — check raw log:`;
       if (d.recent_raw && d.recent_raw.length) {
         html += `<pre style="font-size:10px;overflow-x:auto;max-height:120px;margin:4px 0 0;white-space:pre-wrap;word-break:break-all;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text)">${d.recent_raw.map(l => l.replace(/&/g,'&amp;').replace(/</g,'&lt;')).join('\n')}</pre>`;
       }
@@ -1623,6 +1647,13 @@ async function _refreshSyslogStatus() {
       el.style.color = 'var(--green, #27ae60)';
     }
   } catch (_) {}
+}
+
+function switchTab(name) {
+  document.querySelectorAll('#settings-modal .settings-section[data-tab]')
+    .forEach(el => el.style.display = el.dataset.tab === name ? '' : 'none');
+  document.querySelectorAll('.settings-tab-btn')
+    .forEach(btn => btn.classList.toggle('active', btn.textContent.toLowerCase() === name));
 }
 
 async function openSettings() {
@@ -1667,6 +1698,7 @@ async function openSettings() {
     console.error('Failed to load config:', e);
   }
   document.getElementById('settings-overlay').classList.add('open');
+  switchTab('unifi');
   _refreshSyslogStatus();
   _syslogStatusInterval = setInterval(_refreshSyslogStatus, 5000);
   fetch('/api/update/info').then(r => r.json()).then(d => {
