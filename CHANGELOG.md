@@ -1,3 +1,7 @@
+## v0.0.32 — 2026-04-06
+
+- fix: pre-push hook — skip version bump when no real commits since last bump
+
 ## v0.0.31 — 2026-04-06
 
 - (no code changes)
