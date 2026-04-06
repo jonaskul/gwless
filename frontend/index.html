@@ -1000,17 +1000,21 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     <!-- Update -->
     <div class="settings-section" data-tab="update" style="display:none">
       <div class="settings-section-title">Update</div>
-      <p style="color:var(--text-muted);font-size:12px;margin:0 0 8px">
-        Downloads the latest code from GitHub, updates dependencies, and restarts the service.
-        Your <code>config.yaml</code> is preserved.
-      </p>
-      <div id="update-version-status" style="font-size:12px;color:var(--text-muted);margin-bottom:8px"></div>
-      <div id="update-changelog" style="display:none;margin-bottom:10px">
-        <pre id="update-changelog-text" style="font-size:11px;line-height:1.5;color:var(--text-muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;overflow-x:auto;max-height:160px;white-space:pre-wrap;word-break:break-word;"></pre>
+      <div id="update-current-version" style="font-size:12px;color:var(--text-muted);margin-bottom:12px"></div>
+      <div class="settings-test-row" style="margin-bottom:10px">
+        <button class="btn-test" id="btn-check-update" onclick="checkForUpdate()">Check for update</button>
+        <span id="update-check-result" class="test-result"></span>
       </div>
-      <div class="settings-test-row">
-        <button class="btn-test" id="btn-update" onclick="runUpdate()">Update to latest</button>
-        <span id="update-result" class="test-result"></span>
+      <div id="update-remote-info" style="display:none">
+        <div id="update-version-status" style="font-size:12px;margin-bottom:8px"></div>
+        <div id="update-changelog" style="margin-bottom:12px">
+          <div style="font-size:11px;color:var(--text-muted);font-weight:600;margin-bottom:4px">What's new:</div>
+          <pre id="update-changelog-text" style="font-size:11px;line-height:1.5;color:var(--text-muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;overflow-x:auto;max-height:200px;white-space:pre-wrap;word-break:break-word;"></pre>
+        </div>
+        <div class="settings-test-row">
+          <button class="btn-save" id="btn-update" onclick="runUpdate()" style="display:none">Update to latest</button>
+          <span id="update-result" class="test-result"></span>
+        </div>
       </div>
       <div id="log-update" class="live-log" hidden></div>
     </div>
@@ -1712,40 +1716,70 @@ async function openSettings() {
   fetch('/api/update/info').then(r => r.json()).then(d => {
     const el = document.getElementById('gwless-version');
     if (el) el.textContent = 'Gwless v' + (d.version || '');
-    const clBox = document.getElementById('update-changelog');
-    const clText = document.getElementById('update-changelog-text');
-    if (clBox && clText && d.changelog) {
-      clText.textContent = d.changelog;
-      clBox.style.display = '';
-    }
+    const cv = document.getElementById('update-current-version');
+    if (cv) cv.textContent = 'Installed: v' + (d.version || '');
   }).catch(() => {});
-  const statusEl = document.getElementById('update-version-status');
-  const btnUpdate = document.getElementById('btn-update');
-  if (statusEl) statusEl.textContent = 'Checking for updates…';
-  fetch('/api/update/check').then(r => r.json()).then(d => {
-    if (!statusEl) return;
-    if (d.error) {
-      statusEl.textContent = 'Could not check for updates: ' + d.error;
-    } else if (d.up_to_date) {
-      statusEl.textContent = '✓ Already up to date (v' + d.current + ')';
-      statusEl.style.color = 'var(--green, #4caf50)';
-      if (btnUpdate) { btnUpdate.disabled = true; btnUpdate.title = 'Already on latest version'; }
-    } else if (d.latest) {
-      statusEl.textContent = 'Update available: v' + d.current + ' → v' + d.latest;
-      statusEl.style.color = 'var(--accent)';
-    } else {
-      statusEl.textContent = '';
-    }
-  }).catch(() => { if (statusEl) statusEl.textContent = ''; });
+  // Reset update panel state
+  const remoteInfo = document.getElementById('update-remote-info');
+  if (remoteInfo) remoteInfo.style.display = 'none';
+  const checkResult = document.getElementById('update-check-result');
+  if (checkResult) { checkResult.textContent = ''; checkResult.className = 'test-result'; }
+  const btnCheck = document.getElementById('btn-check-update');
+  if (btnCheck) { btnCheck.disabled = false; }
 }
 
 function closeSettings() {
   document.getElementById('settings-overlay').classList.remove('open');
   if (_syslogStatusInterval) { clearInterval(_syslogStatusInterval); _syslogStatusInterval = null; }
-  const btn = document.getElementById('btn-update');
-  if (btn) { btn.disabled = false; btn.title = ''; }
+}
+
+async function checkForUpdate() {
+  const btn = document.getElementById('btn-check-update');
+  const resultEl = document.getElementById('update-check-result');
+  const remoteInfo = document.getElementById('update-remote-info');
   const statusEl = document.getElementById('update-version-status');
-  if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
+  const clText = document.getElementById('update-changelog-text');
+  const btnUpdate = document.getElementById('btn-update');
+
+  btn.disabled = true;
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Checking…';
+  remoteInfo.style.display = 'none';
+
+  try {
+    const resp = await fetch('/api/update/check', { headers: _getSecretHeaders() });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const d = await resp.json();
+
+    if (d.error) {
+      resultEl.className = 'test-result err';
+      resultEl.textContent = '✗ ' + d.error;
+      btn.disabled = false;
+      return;
+    }
+
+    resultEl.className = 'test-result';
+    resultEl.textContent = '';
+    remoteInfo.style.display = '';
+
+    if (d.up_to_date) {
+      statusEl.style.color = 'var(--green, #4caf50)';
+      statusEl.textContent = '✓ Already up to date (v' + d.current + ')';
+      btnUpdate.style.display = 'none';
+    } else {
+      statusEl.style.color = 'var(--accent)';
+      statusEl.textContent = 'Update available: v' + d.current + ' → v' + d.latest;
+      btnUpdate.style.display = '';
+      btnUpdate.disabled = false;
+    }
+
+    if (clText) clText.textContent = d.remote_changelog || '(no changelog available)';
+    btn.disabled = false;
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
+    btn.disabled = false;
+  }
 }
 
 function _collectSyslogPayload() {

@@ -647,19 +647,28 @@ async def update_info():
 
 @app.get("/api/update/check")
 async def update_check():
-    """Compare installed version with latest on GitHub main branch."""
+    """Compare installed version with latest on GitHub; fetch remote changelog."""
     import urllib.request
+    import re as _re
     current = _read_version()
     try:
-        url = "https://raw.githubusercontent.com/jonaskul/gwless/main/VERSION"
-        with urllib.request.urlopen(url, timeout=5) as resp:
+        base = "https://raw.githubusercontent.com/jonaskul/gwless/main"
+        with urllib.request.urlopen(f"{base}/VERSION", timeout=5) as resp:
             latest = resp.read().decode().strip()
+        try:
+            with urllib.request.urlopen(f"{base}/CHANGELOG.md", timeout=5) as resp:
+                cl_text = resp.read().decode()
+            sections = _re.split(r'(?=^## v)', cl_text, flags=_re.MULTILINE)
+            remote_changelog = "\n".join(s.strip() for s in sections[:5] if s.strip())
+        except Exception:
+            remote_changelog = ""
     except Exception as exc:
         return {"current": current, "latest": None, "up_to_date": None, "error": str(exc)}
     return {
         "current": current,
         "latest": latest,
         "up_to_date": current == latest,
+        "remote_changelog": remote_changelog,
     }
 
 
