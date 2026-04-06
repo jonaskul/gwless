@@ -481,6 +481,7 @@ def diagnose_api(config: dict, log_fn=None) -> None:
         servers_raw = response.get("DHCPServer", {})
         server_list = servers_raw if isinstance(servers_raw, list) else [servers_raw]
         servers = [s for s in server_list if s]
+        vlan_map = _fetch_vlan_map(config)
 
         for srv in servers:
             keys = [k for k in srv.keys() if not k.startswith("@")]
