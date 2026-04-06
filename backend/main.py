@@ -602,6 +602,67 @@ async def test_unifi(body: Optional[UniFiConfig] = None):
 
 
 # ---------------------------------------------------------------------------
+# Version + Changelog
+# ---------------------------------------------------------------------------
+
+def _read_version() -> str:
+    for candidate in [
+        Path(__file__).parent.parent / "VERSION",
+        Path("/opt/gwless/VERSION"),
+    ]:
+        if candidate.exists():
+            return candidate.read_text().strip()
+    return "unknown"
+
+
+def _read_changelog(max_entries: int = 3) -> str:
+    """Return the first *max_entries* changelog sections as plain text."""
+    for candidate in [
+        Path(__file__).parent.parent / "CHANGELOG.md",
+        Path("/opt/gwless/CHANGELOG.md"),
+    ]:
+        if candidate.exists():
+            text = candidate.read_text()
+            # Split on section headers (## v...) and return first max_entries
+            import re
+            sections = re.split(r'(?=^## v)', text, flags=re.MULTILINE)
+            return "\n".join(s.strip() for s in sections[:max_entries] if s.strip())
+    return ""
+
+
+@app.get("/api/version")
+async def get_version():
+    return {"version": _read_version()}
+
+
+@app.get("/api/update/info")
+async def update_info():
+    """Return current version and recent changelog entries."""
+    return {
+        "version": _read_version(),
+        "changelog": _read_changelog(max_entries=3),
+    }
+
+
+@app.get("/api/update/check")
+async def update_check():
+    """Compare installed version with latest on GitHub main branch."""
+    import urllib.request
+    current = _read_version()
+    try:
+        url = "https://raw.githubusercontent.com/jonaskul/gwless/main/VERSION"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            latest = resp.read().decode().strip()
+    except Exception as exc:
+        return {"current": current, "latest": None, "up_to_date": None, "error": str(exc)}
+    return {
+        "current": current,
+        "latest": latest,
+        "up_to_date": current == latest,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Streaming (SSE) test endpoints — live log output
 # ---------------------------------------------------------------------------
 
