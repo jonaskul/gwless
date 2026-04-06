@@ -934,31 +934,39 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       </div>
       <div class="settings-row">
         <div class="settings-field">
-          <label>SSH Password</label>
+          <label>Password</label>
           <input id="s-pass" type="password" placeholder="••••••••" autocomplete="new-password">
-        </div>
-        <div class="settings-field">
-          <label>WebAdmin API Password <span style="color:var(--text-muted);font-weight:400">(blank = same as SSH)</span></label>
-          <input id="s-apipass" type="password" placeholder="same as SSH" autocomplete="new-password">
-        </div>
-      </div>
-      <div class="settings-row triple">
-        <div class="settings-field">
-          <label>SSH Port</label>
-          <input id="s-sshport" type="number" value="22" min="1" max="65535">
         </div>
         <div class="settings-field">
           <label>API Port</label>
           <input id="s-apiport" type="number" value="4444" min="1" max="65535">
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-field">
+          <label>Enable SSH access</label>
+          <input id="s-ssh-enabled" type="checkbox">
         </div>
         <div class="settings-field">
           <label>Verify SSL</label>
           <input id="s-ssl" type="checkbox">
         </div>
       </div>
+      <div id="s-ssh-section" style="display:none">
+        <div style="background:rgba(210,153,34,0.12);border:1px solid rgba(210,153,34,0.3);border-radius:6px;padding:8px 12px;font-size:12px;color:var(--amber);margin-bottom:10px">
+          ⚠ SSH requires a full admin account with access to the advanced shell.
+          A read-only API account is sufficient without SSH.
+        </div>
+        <div class="settings-row single">
+          <div class="settings-field">
+            <label>SSH Port</label>
+            <input id="s-sshport" type="number" value="22" min="1" max="65535" style="max-width:120px">
+          </div>
+        </div>
+      </div>
       <div class="settings-test-row">
-        <button class="btn-test" onclick="testConnection('sophos-ssh')">Test SSH</button>
         <button class="btn-test" onclick="testConnection('sophos-api')">Test API</button>
+        <button class="btn-test" id="btn-test-sophos-ssh" onclick="testConnection('sophos-ssh')" style="display:none">Test SSH</button>
         <span id="test-sophos-result" class="test-result"></span>
       </div>
       <div id="log-sophos" class="live-log" hidden></div>
@@ -1754,6 +1762,13 @@ function initEvents() {
     fetchClients().then(startCountdown);
   });
 
+  // SSH toggle — show/hide SSH section and Test SSH button
+  document.getElementById('s-ssh-enabled').addEventListener('change', function() {
+    const show = this.checked;
+    document.getElementById('s-ssh-section').style.display = show ? '' : 'none';
+    document.getElementById('btn-test-sophos-ssh').style.display = show ? '' : 'none';
+  });
+
   // Panel close
   document.getElementById('panel-close').addEventListener('click', closePanel);
 
@@ -1858,10 +1873,13 @@ async function openSettings() {
     document.getElementById('s-host').value    = s.host || '';
     document.getElementById('s-user').value    = s.username || '';
     document.getElementById('s-pass').value    = s.password || '';
-    document.getElementById('s-apipass').value = s.api_password || '';
-    document.getElementById('s-sshport').value = s.ssh_port ?? 22;
     document.getElementById('s-apiport').value = s.api_port ?? 4444;
     document.getElementById('s-ssl').checked   = !!s.verify_ssl;
+    const sshOn = !!s.ssh_enabled;
+    document.getElementById('s-ssh-enabled').checked = sshOn;
+    document.getElementById('s-sshport').value = s.ssh_port ?? 22;
+    document.getElementById('s-ssh-section').style.display = sshOn ? '' : 'none';
+    document.getElementById('btn-test-sophos-ssh').style.display = sshOn ? '' : 'none';
 
     const sl = cfg.syslog || {};
     document.getElementById('sl-enabled').checked   = !!sl.enabled;
@@ -1975,10 +1993,11 @@ function _collectSophosPayload() {
     host:               document.getElementById('s-host').value.trim(),
     username:           document.getElementById('s-user').value.trim(),
     password:           document.getElementById('s-pass').value,
-    api_password:       document.getElementById('s-apipass').value,
+    api_password:       '',
     ssh_port:           parseInt(document.getElementById('s-sshport').value, 10) || 22,
     api_port:           parseInt(document.getElementById('s-apiport').value, 10) || 4444,
     verify_ssl:         document.getElementById('s-ssl').checked,
+    ssh_enabled:        document.getElementById('s-ssh-enabled').checked,
     poll_interval_leases: 60,
     poll_interval_config: 300,
   };

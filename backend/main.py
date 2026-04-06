@@ -87,7 +87,7 @@ CONFIG.setdefault("sophos", {
     "host": "", "ssh_port": 22, "api_port": 4444,
     "username": "admin", "password": "", "api_password": "",
     "verify_ssl": False, "poll_interval_leases": 60, "poll_interval_config": 300,
-    "ssh_host_key": "",
+    "ssh_host_key": "", "ssh_enabled": False,
 })
 CONFIG.setdefault("unifi", {
     "host": "", "username": "", "password": "",
@@ -155,6 +155,14 @@ def _get_sophos_leases() -> list[dict]:
     entry = _cache_leases.get()
     if entry and not entry.stale:
         return entry.data
+
+    if not CONFIG["sophos"].get("ssh_enabled", False):
+        # SSH disabled — return cached data if available, otherwise empty
+        if entry:
+            entry.stale = True
+            return entry.data
+        return []
+
     try:
         from .sophos import fetch_dhcp_leases_ssh
 
@@ -468,8 +476,9 @@ class SophosConfig(BaseModel):
     api_port:           int  = 4444
     username:           str  = "admin"
     password:           str  = ""
-    api_password:       str  = ""
+    api_password:       str  = ""   # kept for backwards compat; falls back to password
     verify_ssl:         bool = False
+    ssh_enabled:        bool = False
     poll_interval_leases: int = 60
     poll_interval_config: int = 300
     ssh_host_key:       str  = ""
