@@ -220,9 +220,10 @@ class SyslogReceiver:
 
         status = fields.get("status", "").lower()
 
-        # IP: SFOS 18+ uses leased_ip; older versions used src_ip / ipaddress
+        # XGS uses reported_ip; older/other SFOS versions use leased_ip/src_ip/ipaddress
         src_ip = (
-            fields.get("leased_ip")
+            fields.get("reported_ip")
+            or fields.get("leased_ip")
             or fields.get("src_ip")
             or fields.get("ipaddress", "")
         )
@@ -236,7 +237,12 @@ class SyslogReceiver:
             return
 
         mac = _normalize_mac(src_mac)
-        hostname = fields.get("client_host_name") or fields.get("hostname", "")
+        # XGS uses reported_host; fallback to client_host_name / hostname
+        hostname = (
+            fields.get("reported_host")
+            or fields.get("client_host_name")
+            or fields.get("hostname", "")
+        )
         now = time.time()
 
         if status in self._ACTIVE_STATUSES:
