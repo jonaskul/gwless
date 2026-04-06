@@ -644,6 +644,24 @@ async def update_info():
     }
 
 
+@app.get("/api/update/check")
+async def update_check():
+    """Compare installed version with latest on GitHub main branch."""
+    import urllib.request
+    current = _read_version()
+    try:
+        url = "https://raw.githubusercontent.com/jonaskul/gwless/main/VERSION"
+        with urllib.request.urlopen(url, timeout=5) as resp:
+            latest = resp.read().decode().strip()
+    except Exception as exc:
+        return {"current": current, "latest": None, "up_to_date": None, "error": str(exc)}
+    return {
+        "current": current,
+        "latest": latest,
+        "up_to_date": current == latest,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Streaming (SSE) test endpoints — live log output
 # ---------------------------------------------------------------------------
