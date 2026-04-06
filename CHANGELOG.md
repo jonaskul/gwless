@@ -1,3 +1,7 @@
+## v0.0.40 — 2026-04-06
+
+- feat: SSH disabled by default with opt-in checkbox, single password field
+
 ## v0.0.39 — 2026-04-06
 
 - feat: move refresh button to far right of header
