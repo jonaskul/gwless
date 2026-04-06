@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# hooks/pre-push — auto-bump patch version and update CHANGELOG on every push.
+# Enabled via: git config core.hooksPath hooks
+set -euo pipefail
+
+VERSION_FILE="VERSION"
+CHANGELOG_FILE="CHANGELOG.md"
+
+cd "$(git rev-parse --show-toplevel)"
+
+# ── Bump patch version ────────────────────────────────────────────────────────
+current=$(cat "$VERSION_FILE")
+IFS='.' read -r major minor patch <<< "$current"
+new_version="${major}.${minor}.$((patch + 1))"
+
+# ── Collect commits since last version bump ───────────────────────────────────
+last_bump=$(git log --format="%H %s" | grep " chore: bump version" | head -1 | awk '{print $1}')
+if [ -n "$last_bump" ]; then
+    range="${last_bump}..HEAD"
+else
+    # First bump — include last 30 commits
+    range="$(git rev-list HEAD | tail -1)..HEAD"
+fi
+
+commits=$(git log --pretty=format:"- %s" "$range" 2>/dev/null \
+    | grep -v "^- chore: bump version" || true)
+
+# ── Write new version ─────────────────────────────────────────────────────────
+printf '%s\n' "$new_version" > "$VERSION_FILE"
+
+# ── Prepend changelog entry ───────────────────────────────────────────────────
+date_str=$(date '+%Y-%m-%d')
+{
+    printf '## v%s — %s\n\n' "$new_version" "$date_str"
+    if [ -n "$commits" ]; then
+        printf '%s\n' "$commits"
+    else
+        printf '%s\n' "- (no code changes)"
+    fi
+    printf '\n'
+    [ -f "$CHANGELOG_FILE" ] && cat "$CHANGELOG_FILE"
+} > "${CHANGELOG_FILE}.tmp"
+mv "${CHANGELOG_FILE}.tmp" "$CHANGELOG_FILE"
+
+# ── Commit version bump ───────────────────────────────────────────────────────
+git add "$VERSION_FILE" "$CHANGELOG_FILE"
+git commit --no-verify \
+    -m "chore: bump version to v${new_version}" \
+    -m "https://claude.ai/code/session_013KCb8EBZp341gVWDpuQ8xg"
+
+printf '[gwless] %s → v%s\n' "$current" "$new_version"
