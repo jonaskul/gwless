@@ -1,3 +1,7 @@
+## v0.0.9 — 2026-04-06
+
+- (no code changes)
+
 ## v0.0.8 — 2026-04-06
 
 - merge: bring main up to date + add version/changelog display in UPDATE section
