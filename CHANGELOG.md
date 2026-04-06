@@ -1,3 +1,7 @@
+## v0.0.29 — 2026-04-06
+
+- (no code changes)
+
 ## v0.0.28 — 2026-04-06
 
 - fix: handle syslog Expire events that have no MAC address (XGS)
