@@ -90,7 +90,7 @@ CONFIG.setdefault("sophos", {
     "ssh_host_key": "", "ssh_enabled": False,
 })
 CONFIG.setdefault("unifi", {
-    "host": "", "username": "", "password": "",
+    "host": "", "port": 443, "username": "", "password": "",
     "site": "default", "verify_ssl": False, "poll_interval": 30,
 })
 CONFIG.setdefault("app", {"port": 8080, "log_level": "info", "oui_update_on_start": True, "secret": ""})
@@ -215,7 +215,7 @@ def _get_unifi_data() -> dict:
         unifi_cfg = CONFIG.get("unifi", {})
         host = unifi_cfg.get("host", "")
         if host and not host.startswith("http"):
-            host = "https://" + host
+            host = f"https://{host}:{unifi_cfg.get('port', 443)}"
         unifi_cfg = {**unifi_cfg, "host": host}
         client = UniFiClient(unifi_cfg)
         clients = client.fetch_clients()
@@ -486,6 +486,7 @@ class SophosConfig(BaseModel):
 
 class UniFiConfig(BaseModel):
     host:         str  = ""
+    port:         int  = 443
     username:     str  = ""
     password:     str  = ""
     site:         str  = "default"
@@ -604,7 +605,7 @@ async def test_unifi(body: Optional[UniFiConfig] = None):
         cfg = _resolve_unifi_cfg(body)
         host = cfg.get("host", "")
         if host and not host.startswith("http"):
-            host = "https://" + host
+            host = f"https://{host}:{cfg.get('port', 443)}"
         client = UniFiClient({**cfg, "host": host})
         clients = client.fetch_clients()
         return {"ok": True, "message": f"Connected — {len(clients)} active client(s)"}
@@ -741,7 +742,7 @@ async def test_unifi_stream(body: Optional[UniFiConfig] = None):
     cfg = _resolve_unifi_cfg(body)
     host = cfg.get("host", "")
     if host and not host.startswith("http"):
-        host = "https://" + host
+        host = f"https://{host}:{cfg.get('port', 443)}"
     merged = {**cfg, "host": host}
     return _make_sse_response(lambda log_fn: UniFiClient(merged).diagnose(log_fn))
 

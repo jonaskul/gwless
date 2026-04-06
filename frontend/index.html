@@ -789,8 +789,8 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <button class="filter" id="ms-status-btn" type="button">All status ▾</button>
         <div class="ms-panel" id="ms-status-panel" hidden></div>
       </div>
-      <button id="events-btn" title="Recent events">⏱</button>
-      <button id="settings-btn" title="Settings">⚙</button>
+      <button id="events-btn" title="Recent events">⏱ Events</button>
+      <button id="settings-btn" title="Settings">⚙ Settings</button>
       <button id="refresh-btn" style="margin-left:auto">↻ <span id="countdown">—</span></button>
     </div>
   </div>
@@ -882,7 +882,10 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 <!-- Settings modal -->
 <div id="settings-overlay">
   <div id="settings-modal">
-    <h2>⚙ Settings</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h2 style="margin:0">⚙ Settings</h2>
+      <button class="settings-close" onclick="closeSettings()" title="Close">✕</button>
+    </div>
     <div class="settings-tabs">
       <button class="settings-tab-btn active" data-tab="general" onclick="switchTab('general')">General</button>
       <button class="settings-tab-btn" data-tab="unifi" onclick="switchTab('unifi')">UniFi</button>
@@ -1021,12 +1024,22 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       <div class="settings-section-title">UniFi Network Application v10</div>
       <div class="settings-row">
         <div class="settings-field">
-          <label>Host / IP (or full URL)</label>
+          <label>Host / IP</label>
           <input id="u-host" type="text" placeholder="192.168.1.2" autocomplete="off">
         </div>
         <div class="settings-field">
+          <label>Port</label>
+          <input id="u-port" type="number" value="443" min="1" max="65535">
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-field">
           <label>Site</label>
           <input id="u-site" type="text" placeholder="default" autocomplete="off">
+        </div>
+        <div class="settings-field">
+          <label>Verify SSL</label>
+          <input id="u-ssl" type="checkbox">
         </div>
       </div>
       <div class="settings-row">
@@ -1038,14 +1051,6 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
           <label>Password</label>
           <input id="u-pass" type="password" placeholder="••••••••" autocomplete="new-password">
         </div>
-      </div>
-      <div class="settings-row triple">
-        <div class="settings-field">
-          <label>Verify SSL</label>
-          <input id="u-ssl" type="checkbox">
-        </div>
-        <div></div>
-        <div></div>
       </div>
       <div class="settings-test-row">
         <button class="btn-test" onclick="testConnection('unifi')">Test Connection</button>
@@ -1888,6 +1893,7 @@ async function openSettings() {
 
     const u = cfg.unifi || {};
     document.getElementById('u-host').value = u.host || '';
+    document.getElementById('u-port').value = u.port ?? 443;
     document.getElementById('u-user').value = u.username || '';
     document.getElementById('u-pass').value = u.password || '';
     document.getElementById('u-site').value = u.site || 'default';
@@ -2006,6 +2012,7 @@ function _collectSophosPayload() {
 function _collectUniFiPayload() {
   return {
     host:         document.getElementById('u-host').value.trim(),
+    port:         parseInt(document.getElementById('u-port').value, 10) || 443,
     username:     document.getElementById('u-user').value.trim(),
     password:     document.getElementById('u-pass').value,
     site:         document.getElementById('u-site').value.trim() || 'default',
