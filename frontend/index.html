@@ -1283,7 +1283,10 @@ function buildRow(c) {
     <td>${statusDot}</td>
   `;
 
-  tr.addEventListener('click', () => openPanel(c));
+  tr.addEventListener('click', () => {
+    if (state.selectedMac === c.mac) closePanel();
+    else openPanel(c);
+  });
   return tr;
 }
 
