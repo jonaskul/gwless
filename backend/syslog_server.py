@@ -17,6 +17,7 @@ import re
 import socket
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from typing import Optional
 
@@ -67,6 +68,7 @@ class SyslogReceiver:
         self.messages_received: int = 0
 
         self._leases: dict[str, dict] = {}   # mac → lease dict (with internal _keys)
+        self._recent_raw: deque[str] = deque(maxlen=20)
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -133,26 +135,37 @@ class SyslogReceiver:
 
     def _handle_message(self, msg: str, addr: tuple) -> None:
         self.messages_received += 1
+        with self._lock:
+            self._recent_raw.append(msg[:300])
 
         fields = _parse_kv(msg)
 
+        # SFOS uses log_component="DHCP Server"
         component = fields.get("log_component", "").lower()
         if "dhcp" not in component:
             return
 
-        subtype = fields.get("log_subtype", "").lower()
-        src_mac = fields.get("src_mac", "")
-        src_ip = fields.get("src_ip", "")
+        # SFOS uses status="Renew"|"Release"|"Expire" (not log_subtype)
+        status = fields.get("status", "").lower()
 
-        if not src_mac or not src_ip:
+        # IP: SFOS 18+ uses leased_ip; older versions used src_ip / ipaddress
+        src_ip = (
+            fields.get("leased_ip")
+            or fields.get("src_ip")
+            or fields.get("ipaddress", "")
+        )
+        src_mac = fields.get("src_mac", "")
+
+        if not src_mac or not src_ip or src_mac == "-" or src_ip == "-":
             return
 
         mac = _normalize_mac(src_mac)
-        hostname = fields.get("hostname", "")
+        # SFOS uses client_host_name; fallback to hostname
+        hostname = fields.get("client_host_name") or fields.get("hostname", "")
         now = time.time()
         self.last_event_ts = now
 
-        if "acknowledge" in subtype or "assign" in subtype or "request" in subtype:
+        if status == "renew":
             try:
                 lease_time = int(fields.get("lease_time", 86400))
             except ValueError:
@@ -171,14 +184,14 @@ class SyslogReceiver:
                     "_lease_time": lease_time,
                 }
             logger.debug(
-                "Syslog DHCP assign: %s → %s (%s)", mac, src_ip, hostname or "—"
+                "Syslog DHCP renew: %s → %s (%s)", mac, src_ip, hostname or "—"
             )
 
-        elif "release" in subtype or "expir" in subtype or "decline" in subtype:
+        elif status in ("release", "expire"):
             with self._lock:
                 removed = self._leases.pop(mac, None)
             if removed:
-                logger.debug("Syslog DHCP release: %s (%s)", mac, src_ip)
+                logger.debug("Syslog DHCP %s: %s (%s)", status, mac, src_ip)
 
     # ------------------------------------------------------------------
     # Lease access
@@ -207,3 +220,8 @@ class SyslogReceiver:
                 {k: v for k, v in lease.items() if not k.startswith("_")}
                 for lease in active.values()
             ]
+
+    def get_recent_raw(self) -> list[str]:
+        """Return the last up to 20 raw syslog messages received (any type)."""
+        with self._lock:
+            return list(self._recent_raw)

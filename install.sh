@@ -129,7 +129,9 @@ pct exec "${CTID}" -- bash -c "
   export DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8 &&
   apt-get update -qq &&
   apt-get install -y python3 python3-pip --no-install-recommends -qq &&
-  pip3 install -r /opt/gwless/requirements.txt --break-system-packages --quiet
+  pip3 install -r /opt/gwless/requirements.txt \
+    --break-system-packages --quiet \
+    --no-warn-script-location --root-user-action=ignore
 " || die "Dependency installation failed inside container."
 
 # ── Write blank config.yaml ───────────────────────────────────────────────────
@@ -142,6 +144,18 @@ info "Installing systemd service..."
 pct exec "${CTID}" -- cp /opt/gwless/gwless.service /etc/systemd/system/gwless.service
 pct exec "${CTID}" -- systemctl daemon-reload
 pct exec "${CTID}" -- systemctl enable --now gwless
+
+# ── Configure console auto-login ──────────────────────────────────────────────
+info "Configuring console auto-login..."
+pct exec "${CTID}" -- bash -c '
+  mkdir -p /etc/systemd/system/container-getty@1.service.d
+  cat > /etc/systemd/system/container-getty@1.service.d/override.conf << '"'"'EOF'"'"'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 $TERM
+EOF
+  systemctl daemon-reload
+'
 
 sleep 3
 

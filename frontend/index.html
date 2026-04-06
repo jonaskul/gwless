@@ -24,6 +24,20 @@
   --surface2:   #1c2128;
 }
 
+[data-theme="light"] {
+  --bg:         #f6f8fa;
+  --surface:    #ffffff;
+  --border:     #d0d7de;
+  --text:       #1f2328;
+  --text-muted: #636c76;
+  --accent:     #0969da;
+  --green:      #1a7f37;
+  --amber:      #9a6700;
+  --red:        #cf222e;
+  --gray:       #8c959f;
+  --surface2:   #eaeef2;
+}
+
 html, body {
   height: 100%;
   overflow: hidden;
@@ -344,6 +358,46 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   margin-bottom: 10px;
 }
 
+.panel-subsection-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 10px 0 5px;
+}
+.event-list { display: flex; flex-direction: column; gap: 3px; }
+.event-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.event-ts { color: var(--text-muted); white-space: nowrap; font-family: 'JetBrains Mono', monospace; }
+.event-tag {
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.event-new_device      { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
+.event-ip_change       { background: color-mix(in srgb, var(--amber) 20%, transparent); color: var(--amber); }
+.event-hostname_change { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.event-detail { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Events modal */
+#events-modal {
+  max-width: 660px;
+  width: 95vw;
+}
+#events-list .event-item {
+  grid-template-columns: auto auto auto 1fr;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
 .kv-row {
   display: flex;
   align-items: flex-start;
@@ -412,7 +466,35 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   animation: spin 0.7s linear infinite;
 }
 
-/* ── Settings button ── */
+/* ── Events + Theme + Settings buttons ── */
+#events-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 9px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+#events-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+#theme-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 9px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+#theme-btn:hover { color: var(--accent); border-color: var(--accent); }
+
 #settings-btn {
   background: none;
   border: 1px solid var(--border);
@@ -556,6 +638,23 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 .test-result.err  { color: var(--red); }
 .test-result.busy { color: var(--text-muted); }
 
+.live-log {
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #e6edf3;
+  padding: 8px 10px;
+  max-height: 160px;
+  overflow-y: auto;
+  margin-top: 6px;
+}
+.live-log .ll-ok   { color: #3fb950; }
+.live-log .ll-err  { color: #f85149; }
+.live-log .ll-info { color: #8b949e; }
+
 .settings-footer {
   display: flex;
   justify-content: flex-end;
@@ -624,6 +723,8 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <option value="offline">Offline</option>
       </select>
       <button id="refresh-btn">↻ <span id="countdown">—</span></button>
+      <button id="events-btn" title="Recent events">⏱</button>
+      <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑</button>
       <button id="settings-btn" title="Settings">⚙</button>
     </div>
   </div>
@@ -698,6 +799,20 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 
 </div>
 
+<!-- Events modal -->
+<div id="events-overlay" class="settings-overlay">
+  <div id="events-modal" class="settings-modal">
+    <div class="settings-header">
+      <div>
+        <h2 style="margin:0;font-size:15px">Recent Events</h2>
+        <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">IP changes, new devices, and hostname changes — last 90 days</p>
+      </div>
+      <button class="settings-close" onclick="closeEvents()">✕</button>
+    </div>
+    <div id="events-list" style="padding:16px 20px;overflow-y:auto;max-height:65vh"></div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div id="settings-overlay">
   <div id="settings-modal">
@@ -747,6 +862,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <button class="btn-test" onclick="testConnection('sophos-api')">Test API</button>
         <span id="test-sophos-result" class="test-result"></span>
       </div>
+      <div id="log-sophos" class="live-log" hidden></div>
     </div>
 
     <!-- Syslog -->
@@ -828,6 +944,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <button class="btn-test" onclick="testConnection('unifi')">Test Connection</button>
         <span id="test-unifi-result" class="test-result"></span>
       </div>
+      <div id="log-unifi" class="live-log" hidden></div>
     </div>
 
     <!-- App -->
@@ -854,6 +971,23 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
           <input id="a-secret" type="password" placeholder="leave blank if not configured" autocomplete="new-password">
         </div>
       </div>
+    </div>
+
+    <!-- Update -->
+    <div class="settings-section">
+      <div class="settings-section-title">Update</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 8px">
+        Downloads the latest code from GitHub, updates dependencies, and restarts the service.
+        Your <code>config.yaml</code> is preserved.
+      </p>
+      <div id="update-changelog" style="display:none;margin-bottom:10px">
+        <pre id="update-changelog-text" style="font-size:11px;line-height:1.5;color:var(--text-muted);background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:0;overflow-x:auto;max-height:160px;white-space:pre-wrap;word-break:break-word;"></pre>
+      </div>
+      <div class="settings-test-row">
+        <button class="btn-test" id="btn-update" onclick="runUpdate()">Update to latest</button>
+        <span id="update-result" class="test-result"></span>
+      </div>
+      <div id="log-update" class="live-log" hidden></div>
     </div>
 
     <div class="settings-footer">
@@ -1167,6 +1301,21 @@ function openPanel(c) {
   const content = document.getElementById('panel-content');
   content.innerHTML = buildPanelContent(c);
 
+  // Append history section and populate async
+  const histSec = document.createElement('div');
+  histSec.className = 'panel-section';
+  histSec.innerHTML = '<div class="panel-section-title">History</div>'
+    + '<div style="color:var(--text-muted);font-size:12px">Loading…</div>';
+  content.appendChild(histSec);
+
+  fetch('/api/history/device/' + encodeURIComponent(c.mac))
+    .then(r => r.json())
+    .then(data => _renderPanelHistory(histSec, data))
+    .catch(() => {
+      histSec.innerHTML = '<div class="panel-section-title">History</div>'
+        + '<div style="color:var(--text-muted);font-size:12px">Unavailable</div>';
+    });
+
   document.getElementById('panel').classList.add('open');
 }
 
@@ -1228,6 +1377,73 @@ function buildPanelContent(c) {
   }
 
   return html;
+}
+
+function _fmtTs(ts) {
+  return new Date(ts * 1000).toLocaleString();
+}
+
+function _fmtAgo(ts) {
+  const s = Math.floor(Date.now() / 1000 - ts);
+  if (s < 60)    return `${s}s ago`;
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+const _EVENT_LABEL = { new_device: 'New device', ip_change: 'IP change', hostname_change: 'Hostname' };
+
+function _renderPanelHistory(container, data) {
+  const dev = data.device;
+  if (!dev) {
+    container.innerHTML = '<div class="panel-section-title">History</div>'
+      + '<div style="color:var(--text-muted);font-size:12px">No history yet — appears after first poll.</div>';
+    return;
+  }
+  let html = `
+    <div class="panel-section-title">History</div>
+    <div class="kv-row"><span class="kv-label">First seen</span><span class="kv-value">${_fmtTs(dev.first_seen)}</span></div>
+    <div class="kv-row"><span class="kv-label">Last seen</span><span class="kv-value" title="${_fmtTs(dev.last_seen)}">${_fmtAgo(dev.last_seen)}</span></div>`;
+  if (data.events.length) {
+    html += '<div class="panel-subsection-title">Events</div><div class="event-list">';
+    for (const e of data.events) {
+      html += `<div class="event-item">
+        <span class="event-ts">${_fmtTs(e.ts)}</span>
+        <span class="event-tag event-${e.event}">${_EVENT_LABEL[e.event] || e.event}</span>
+        <span class="event-detail">${esc(e.detail || '')}</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function _renderEventsList(el, events) {
+  if (!events.length) { el.textContent = 'No events recorded yet.'; return; }
+  el.innerHTML = '<div class="event-list">' + events.map(e =>
+    `<div class="event-item" style="grid-template-columns:auto auto auto 1fr">
+      <span class="event-ts">${_fmtTs(e.ts)}</span>
+      <span class="event-tag event-${e.event}">${_EVENT_LABEL[e.event] || e.event}</span>
+      <span class="mono" style="font-size:11px;color:var(--text-muted)">${esc(e.mac)}</span>
+      <span class="event-detail">${esc(e.detail || '')}</span>
+    </div>`
+  ).join('') + '</div>';
+}
+
+async function openEvents() {
+  document.getElementById('events-overlay').classList.add('open');
+  const el = document.getElementById('events-list');
+  el.textContent = 'Loading…';
+  try {
+    const data = await fetch('/api/history/events?limit=200').then(r => r.json());
+    _renderEventsList(el, data.events);
+  } catch (e) {
+    el.textContent = 'Failed to load events.';
+  }
+}
+
+function closeEvents() {
+  document.getElementById('events-overlay').classList.remove('open');
 }
 
 function kvRow(label, value, copyable) {
@@ -1348,6 +1564,20 @@ function initEvents() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Theme toggle
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isLight = document.documentElement.dataset.theme === 'light';
+  if (isLight) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.removeItem('gwlessTheme');
+  } else {
+    document.documentElement.dataset.theme = 'light';
+    localStorage.setItem('gwlessTheme', 'light');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Settings modal
 // ─────────────────────────────────────────────────────────────────────────────
 const MASKED = '••••••••';
@@ -1375,9 +1605,16 @@ async function _refreshSyslogStatus() {
     } else if (!d.running) {
       el.textContent = 'Enabled but not running (check logs)';
       el.style.color = 'var(--red, #e74c3c)';
-    } else if (d.last_event_ts == null) {
-      el.textContent = `Listening on port ${d.port} — no events received yet`;
+    } else if (d.last_event_ts == null && d.messages_received === 0) {
+      el.textContent = `Listening on port ${d.port} — no messages received yet`;
       el.style.color = 'var(--amber, #f39c12)';
+    } else if (d.last_event_ts == null && d.messages_received > 0) {
+      el.style.color = 'var(--amber, #f39c12)';
+      let html = `Mottar meldinger (${d.messages_received} totalt) men ingen DHCP-events funnet — sjekk rå logg:`;
+      if (d.recent_raw && d.recent_raw.length) {
+        html += `<pre style="font-size:10px;overflow-x:auto;max-height:120px;margin:4px 0 0;white-space:pre-wrap;word-break:break-all;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text)">${d.recent_raw.map(l => l.replace(/&/g,'&amp;').replace(/</g,'&lt;')).join('\n')}</pre>`;
+      }
+      el.innerHTML = html;
     } else {
       const ago = Math.round(Date.now() / 1000 - d.last_event_ts);
       const agoStr = ago < 60 ? `${ago}s ago` : `${Math.round(ago/60)}m ago`;
@@ -1391,6 +1628,10 @@ async function openSettings() {
   document.getElementById('save-result').textContent = '';
   document.getElementById('test-sophos-result').textContent = '';
   document.getElementById('test-unifi-result').textContent = '';
+  document.getElementById('update-result').textContent = '';
+  document.getElementById('update-result').className = 'test-result';
+  document.getElementById('log-update').hidden = true;
+  document.getElementById('log-update').innerHTML = '';
   try {
     const resp = await fetch('/api/config');
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1427,9 +1668,15 @@ async function openSettings() {
   document.getElementById('settings-overlay').classList.add('open');
   _refreshSyslogStatus();
   _syslogStatusInterval = setInterval(_refreshSyslogStatus, 5000);
-  fetch('/api/version').then(r => r.json()).then(d => {
+  fetch('/api/update/info').then(r => r.json()).then(d => {
     const el = document.getElementById('gwless-version');
-    if (el) el.textContent = 'Gwless ' + (d.version || '');
+    if (el) el.textContent = 'Gwless v' + (d.version || '');
+    const clBox = document.getElementById('update-changelog');
+    const clText = document.getElementById('update-changelog-text');
+    if (clBox && clText && d.changelog) {
+      clText.textContent = d.changelog;
+      clBox.style.display = '';
+    }
   }).catch(() => {});
 }
 
@@ -1472,33 +1719,56 @@ function _collectUniFiPayload() {
 }
 
 async function testConnection(target) {
-  const resultId = target.startsWith('sophos') ? 'test-sophos-result' : 'test-unifi-result';
-  const el = document.getElementById(resultId);
-  el.className = 'test-result busy';
-  el.textContent = 'Testing…';
+  const isSophos = target.startsWith('sophos');
+  const resultEl = document.getElementById(isSophos ? 'test-sophos-result' : 'test-unifi-result');
+  const logEl    = document.getElementById(isSophos ? 'log-sophos' : 'log-unifi');
+
+  logEl.innerHTML = '';
+  logEl.hidden = false;
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Testing…';
 
   const btn = event.target;
   btn.disabled = true;
 
-  try {
-    let body;
-    if (target === 'sophos-ssh' || target === 'sophos-api') {
-      body = _collectSophosPayload();
-    } else {
-      body = _collectUniFiPayload();
-    }
+  const body = (target === 'sophos-ssh' || target === 'sophos-api')
+    ? _collectSophosPayload() : _collectUniFiPayload();
 
-    const resp = await fetch('/api/test/' + target, {
+  try {
+    const resp = await fetch('/api/test/' + target + '/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ..._getSecretHeaders() },
       body: JSON.stringify(body),
     });
-    const data = await resp.json();
-    el.className = 'test-result ' + (data.ok ? 'ok' : 'err');
-    el.textContent = (data.ok ? '✓ ' : '✗ ') + data.message;
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', lastOk = null, lastMsg = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const ev = JSON.parse(part.slice(6));
+        const line = document.createElement('div');
+        line.className = 'll-' + (ev.level || 'info');
+        line.textContent = ev.msg;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+        if (ev.final) { lastOk = ev.ok; lastMsg = ev.msg; }
+      }
+    }
+
+    resultEl.className = 'test-result ' + (lastOk === false ? 'err' : 'ok');
+    resultEl.textContent = (lastOk === false ? '✗ ' : '✓ ') + lastMsg;
   } catch (e) {
-    el.className = 'test-result err';
-    el.textContent = '✗ ' + e.message;
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
   } finally {
     btn.disabled = false;
   }
@@ -1547,6 +1817,92 @@ async function saveSettings() {
   }
 }
 
+async function runUpdate() {
+  const btn = document.getElementById('btn-update');
+  const resultEl = document.getElementById('update-result');
+  const logEl = document.getElementById('log-update');
+
+  btn.disabled = true;
+  logEl.innerHTML = '';
+  logEl.hidden = false;
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Updating…';
+
+  try {
+    const resp = await fetch('/api/update/apply', {
+      method: 'POST',
+      headers: _getSecretHeaders(),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', isRestarting = false;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const ev = JSON.parse(part.slice(6));
+        const line = document.createElement('div');
+        line.className = 'll-' + (ev.level || 'info');
+        line.textContent = ev.msg;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+        if (ev.final) {
+          if (ev.restarting) {
+            isRestarting = true;
+            resultEl.className = 'test-result busy';
+            resultEl.textContent = 'Restarting…';
+          } else {
+            resultEl.className = 'test-result ' + (ev.ok ? 'ok' : 'err');
+            resultEl.textContent = (ev.ok ? '✓ ' : '✗ ') + ev.msg;
+          }
+        }
+      }
+    }
+
+    if (isRestarting) {
+      await _waitForRestart();
+    }
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
+    btn.disabled = false;
+  }
+}
+
+async function _waitForRestart() {
+  const logEl = document.getElementById('log-update');
+  const resultEl = document.getElementById('update-result');
+  const deadline = Date.now() + 60_000;
+  await new Promise(r => setTimeout(r, 4000));
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch('/api/config', { signal: AbortSignal.timeout(3000) });
+      if (r.ok) {
+        const line = document.createElement('div');
+        line.className = 'll-ok';
+        line.textContent = 'Service back online — reloading…';
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+        resultEl.className = 'test-result ok';
+        resultEl.textContent = '✓ Update complete';
+        await new Promise(r => setTimeout(r, 1500));
+        location.reload();
+        return;
+      }
+    } catch (_) {}
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  resultEl.className = 'test-result err';
+  resultEl.textContent = '✗ Service did not come back in 60s — check container';
+}
+
 async function checkSetupRequired() {
   try {
     const resp = await fetch('/api/config');
@@ -1572,21 +1928,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // Settings button
   document.getElementById('settings-btn').addEventListener('click', openSettings);
 
+  // Events button
+  document.getElementById('events-btn').addEventListener('click', openEvents);
+
+  // Close events modal on overlay click
+  document.getElementById('events-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('events-overlay')) closeEvents();
+  });
+
   // Close modal on overlay click
   document.getElementById('settings-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('settings-overlay')) closeSettings();
   });
 
-  // Escape closes settings too
+  // Escape closes modals and panel
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (document.getElementById('settings-overlay').classList.contains('open')) {
+      if (document.getElementById('events-overlay').classList.contains('open')) {
+        closeEvents();
+      } else if (document.getElementById('settings-overlay').classList.contains('open')) {
         closeSettings();
       } else {
         closePanel();
       }
     }
   });
+
+  // Restore saved theme preference
+  if (localStorage.getItem('gwlessTheme') === 'light') {
+    document.documentElement.dataset.theme = 'light';
+  }
 
   checkSetupRequired();
   fetchClients().then(startCountdown);

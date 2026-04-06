@@ -11,7 +11,9 @@ Aggregates DHCP lease data from **Sophos SFOS 22** and client data from **UniFi 
 - **Unified client table** — merges Sophos DHCP leases with UniFi client data via MAC address (IP fallback)
 - **Source tagging** — each client is tagged as `both` (matched), `sophos_only`, or `unifi_only`
 - **Live status** — green dot = active in UniFi, grey dot = lease-only
-- **Slide-over detail panel** — full Sophos + UniFi data per client with one-click copy
+- **Slide-over detail panel** — full Sophos + UniFi data per client with one-click copy, plus history
+- **Device history** — SQLite-backed first/last seen, IP changes, hostname changes, and new device events
+- **Events feed** — global event log accessible from the `⏱` button in the header
 - **VLAN / source / status filtering** + full-text search across hostname, IP, MAC, vendor
 - **Sortable columns** — click any column header
 - **Auto-refresh** every 30s with visible countdown
@@ -108,6 +110,26 @@ The installer will:
 
 ---
 
+## Updating
+
+### In-app (recommended)
+
+Open **⚙ Settings → Update → Update to latest**. This will:
+1. Download the latest code from GitHub
+2. Update Python dependencies
+3. Restart the service automatically
+4. Reload the page when the service is back online
+
+`config.yaml`, `oui.json`, and `history.db` are preserved.
+
+### Manual (inside the container)
+
+```bash
+bash /opt/gwless/update.sh
+```
+
+---
+
 ## Manual Setup
 
 ```bash
@@ -123,25 +145,56 @@ python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 
 ## Configuration
 
-See [`config.yaml.example`](config.yaml.example) for all options.
-
-Key settings:
+See [`config.yaml.example`](config.yaml.example) for all options. All credentials can be set from the **⚙ Settings** panel in the dashboard without editing files directly.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `sophos.host` | — | Sophos XGS IP or hostname |
 | `sophos.ssh_port` | `22` | SSH port |
 | `sophos.api_port` | `4444` | WebAdmin API port |
+| `sophos.ssh_host_key` | — | SSH host key fingerprint (auto-populated on first connect via TOFU) |
 | `unifi.host` | — | UniFi Network Application host |
 | `unifi.site` | `default` | UniFi site name |
 | `syslog.enabled` | `false` | Enable embedded UDP syslog receiver |
 | `syslog.port` | `514` | UDP port to listen on |
 | `syslog.bind_host` | `0.0.0.0` | Bind address |
 | `app.oui_update_on_start` | `true` | Download OUI DB if missing |
+| `app.secret` | — | Optional API secret — see [Security](#security) |
+
+---
+
+## Security
+
+### API Secret
+
+Sensitive endpoints (`POST /api/config`, test endpoints, `/api/refresh`, `/api/update/apply`) can be protected with a shared secret.
+
+1. Set `app.secret: your-secret` in `config.yaml` and restart the service
+2. Enter the same value in **⚙ Settings → Application → API Secret** in the browser — it is stored in `sessionStorage` and sent as an `X-Gwless-Secret` header on protected requests
+
+`GET /api/clients`, `GET /api/config` (passwords masked), and read-only endpoints remain accessible without the secret.
+
+### SSH Host Key Pinning (TOFU)
+
+On the first SSH connection to Sophos, the host key fingerprint is saved to `config.yaml` under `sophos.ssh_host_key`. Subsequent connections verify against this fingerprint. If the key changes (e.g. after a firmware reinstall), clear `ssh_host_key` in `config.yaml` to re-trust.
+
+---
+
+## Persistent Data
+
+These files are stored in `/opt/gwless/` and are **never overwritten by updates**:
+
+| File | Purpose |
+|------|---------|
+| `config.yaml` | All credentials and settings |
+| `oui.json` | OUI vendor database (~5 MB) |
+| `history.db` | SQLite device history — survives restarts, updates, and reboots |
 
 ---
 
 ## API Endpoints
+
+### Data
 
 | Endpoint | Description |
 |----------|-------------|
@@ -165,10 +218,14 @@ Key settings:
 |----------|-------------|
 | `GET /api/config` | Current config (passwords masked) |
 | `POST /api/config` | Save new config |
-| `POST /api/test/sophos-ssh` | Test Sophos SSH connectivity |
-| `POST /api/test/sophos-api` | Test Sophos XML API connectivity |
-| `POST /api/test/unifi` | Test UniFi connectivity |
 | `GET /api/refresh` | Invalidate all caches |
+| `POST /api/test/sophos-ssh` | Test Sophos SSH (returns JSON) |
+| `POST /api/test/sophos-api` | Test Sophos XML API (returns JSON) |
+| `POST /api/test/unifi` | Test UniFi connectivity (returns JSON) |
+| `POST /api/test/sophos-ssh/stream` | Test Sophos SSH — streams live log (SSE) |
+| `POST /api/test/sophos-api/stream` | Test Sophos XML API — streams live log (SSE) |
+| `POST /api/test/unifi/stream` | Test UniFi — streams live log (SSE) |
+| `POST /api/update/apply` | Run `update.sh` and stream output (SSE) |
 
 ---
 
@@ -184,13 +241,16 @@ pct exec <CTID> -- journalctl -u gwless -f
 # Edit config (or use the ⚙ Settings panel in the dashboard)
 pct exec <CTID> -- nano /opt/gwless/config.yaml
 pct exec <CTID> -- systemctl restart gwless
+
+# Inspect history database
+pct exec <CTID> -- sqlite3 /opt/gwless/history.db "SELECT * FROM events ORDER BY ts DESC LIMIT 20;"
 ```
 
 ---
 
 ## Stack
 
-- **Backend**: Python 3 / FastAPI / paramiko / requests / xmltodict
+- **Backend**: Python 3 / FastAPI / paramiko / requests / xmltodict / SQLite
 - **Frontend**: Single-file HTML — vanilla JS, no build step
 - **Fonts**: Inter + JetBrains Mono (Google Fonts)
 - **Container**: Debian 13 LXC on Proxmox VE

@@ -4,24 +4,33 @@ API routes MUST be defined before StaticFiles mount.
 """
 from __future__ import annotations
 
+import asyncio
 import copy
+import json
 import logging
 import os
+import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .cache import TTLCache
+from .history import init_db, record_seen, get_device, get_recent_events
 from .merger import merge_clients, normalize_mac
 from .oui import lookup as oui_lookup, ensure_oui_db
 from .syslog_server import SyslogReceiver
 
 logger = logging.getLogger(__name__)
+
+_test_executor = ThreadPoolExecutor(max_workers=3)
+_history_last_ts: float = 0.0
 
 # ---------------------------------------------------------------------------
 # Config path resolution
@@ -235,6 +244,19 @@ def _get_merged_clients() -> list[dict]:
         else:
             c["vendor"] = oui_lookup(mac)
 
+    # Record to history DB only when cache was actually refreshed
+    global _history_last_ts
+    cache_ts = max(
+        _cache_leases.last_updated or 0,
+        _cache_unifi.last_updated or 0,
+    )
+    if cache_ts > _history_last_ts:
+        try:
+            record_seen(merged)
+            _history_last_ts = cache_ts
+        except Exception as e:
+            logger.warning("History recording failed: %s", e)
+
     return merged
 
 
@@ -242,7 +264,16 @@ def _get_merged_clients() -> list[dict]:
 # FastAPI app
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Gwless", description="DHCP & Network Client Dashboard", version="1.0.0")
+def _read_version() -> str:
+    try:
+        return (Path(__file__).parent.parent / "VERSION").read_text().strip()
+    except Exception:
+        return "unknown"
+
+
+app = FastAPI(title="Gwless", description="DHCP & Network Client Dashboard", version=_read_version())
+
+init_db()
 
 # No CORS middleware — frontend is served from the same origin (StaticFiles mount).
 # The browser's default same-origin policy protects all API endpoints.
@@ -274,6 +305,11 @@ async def on_startup():
 # ---------------------------------------------------------------------------
 # Health + stats
 # ---------------------------------------------------------------------------
+
+@app.get("/api/version")
+async def get_version():
+    return {"version": _read_version()}
+
 
 @app.get("/health")
 async def health():
@@ -393,6 +429,7 @@ async def syslog_status():
         "lease_count": len(_syslog_receiver.get_leases()),
         "messages_received": _syslog_receiver.messages_received,
         "last_event_ts": _syslog_receiver.last_event_ts,
+        "recent_raw": _syslog_receiver.get_recent_raw(),
     }
 
 
@@ -565,7 +602,7 @@ async def test_unifi(body: Optional[UniFiConfig] = None):
 
 
 # ---------------------------------------------------------------------------
-# Version
+# Version + Changelog
 # ---------------------------------------------------------------------------
 
 def _read_version() -> str:
@@ -578,9 +615,176 @@ def _read_version() -> str:
     return "unknown"
 
 
+def _read_changelog(max_entries: int = 3) -> str:
+    """Return the first *max_entries* changelog sections as plain text."""
+    for candidate in [
+        Path(__file__).parent.parent / "CHANGELOG.md",
+        Path("/opt/gwless/CHANGELOG.md"),
+    ]:
+        if candidate.exists():
+            text = candidate.read_text()
+            # Split on section headers (## v...) and return first max_entries
+            import re
+            sections = re.split(r'(?=^## v)', text, flags=re.MULTILINE)
+            return "\n".join(s.strip() for s in sections[:max_entries] if s.strip())
+    return ""
+
+
 @app.get("/api/version")
 async def get_version():
     return {"version": _read_version()}
+
+
+@app.get("/api/update/info")
+async def update_info():
+    """Return current version and recent changelog entries."""
+    return {
+        "version": _read_version(),
+        "changelog": _read_changelog(max_entries=3),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Streaming (SSE) test endpoints — live log output
+# ---------------------------------------------------------------------------
+
+def _make_sse_response(sync_fn):
+    """
+    Wraps a sync diagnostic function (signature: fn(log_fn)) in an SSE StreamingResponse.
+    log_fn(msg, level, **kw) is injected and bridges sync→async via asyncio.Queue.
+    """
+    async def generate():
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def log_fn(msg, level="info", **kw):
+            loop.call_soon_threadsafe(queue.put_nowait, {"msg": msg, "level": level, **kw})
+
+        async def run():
+            try:
+                await loop.run_in_executor(_test_executor, lambda: sync_fn(log_fn))
+            except Exception as e:
+                log_fn(str(e), "err", final=True, ok=False)
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        asyncio.create_task(run())
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/api/test/sophos-ssh/stream", dependencies=[Depends(_require_secret)])
+async def test_sophos_ssh_stream(body: Optional[SophosConfig] = None):
+    from .sophos import diagnose_ssh
+    cfg = _resolve_sophos_cfg(body)
+    return _make_sse_response(lambda log_fn: diagnose_ssh(cfg, log_fn))
+
+
+@app.post("/api/test/sophos-api/stream", dependencies=[Depends(_require_secret)])
+async def test_sophos_api_stream(body: Optional[SophosConfig] = None):
+    from .sophos import diagnose_api
+    cfg = _resolve_sophos_cfg(body)
+    return _make_sse_response(lambda log_fn: diagnose_api(cfg, log_fn))
+
+
+@app.post("/api/test/unifi/stream", dependencies=[Depends(_require_secret)])
+async def test_unifi_stream(body: Optional[UniFiConfig] = None):
+    from .unifi import UniFiClient
+    cfg = _resolve_unifi_cfg(body)
+    host = cfg.get("host", "")
+    if host and not host.startswith("http"):
+        host = "https://" + host
+    merged = {**cfg, "host": host}
+    return _make_sse_response(lambda log_fn: UniFiClient(merged).diagnose(log_fn))
+
+
+# ---------------------------------------------------------------------------
+# History endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/history/device/{mac}")
+async def history_device(mac: str):
+    """Return first/last seen and event log for a specific MAC address."""
+    return get_device(normalize_mac(mac))
+
+
+@app.get("/api/history/events")
+async def history_events(limit: int = Query(100, le=500)):
+    """Return the most recent events across all devices."""
+    return {"events": get_recent_events(limit)}
+
+
+# ---------------------------------------------------------------------------
+# Update endpoint — downloads latest code from GitHub, restarts service
+# ---------------------------------------------------------------------------
+
+@app.post("/api/update/apply", dependencies=[Depends(_require_secret)])
+async def update_apply():
+    """Run update.sh inside the container and stream output as SSE."""
+    script = Path(__file__).parent.parent / "update.sh"
+
+    async def generate():
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def run():
+            try:
+                proc = subprocess.Popen(
+                    ["bash", str(script)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line:
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait, {"msg": line, "level": "info"}
+                        )
+                proc.wait()
+                if proc.returncode != 0:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"msg": f"Update failed (exit code {proc.returncode})", "level": "err", "final": True, "ok": False},
+                    )
+                else:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"msg": "Service is restarting…", "level": "ok", "final": True, "ok": True, "restarting": True},
+                    )
+            except Exception as e:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait, {"msg": str(e), "level": "err", "final": True, "ok": False}
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        async def _run():
+            await loop.run_in_executor(_test_executor, run)
+
+        asyncio.create_task(_run())
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------------------------------------------------------------------------
