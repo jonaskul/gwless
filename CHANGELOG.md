@@ -1,3 +1,7 @@
+## v0.0.33 — 2026-04-06
+
+- docs: update README — tabbed settings, syslog persistence, new update flow, API table
+
 ## v0.0.32 — 2026-04-06
 
 - fix: pre-push hook — skip version bump when no real commits since last bump
