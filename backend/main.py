@@ -235,6 +235,7 @@ def _get_merged_clients() -> list[dict]:
         sophos_static=sophos_cfg.get("static_entries", []),
         unifi_clients=unifi_data.get("clients", []),
         unifi_aps=unifi_data.get("ap_map", {}),
+        sophos_servers=sophos_cfg.get("servers", []),
     )
 
     for c in merged:

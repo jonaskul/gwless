@@ -24,11 +24,25 @@ def normalize_ip(ip: str) -> str:
     return ip.strip() if ip else ""
 
 
+def _vlan_for_ip(ip: str, servers: list[dict]) -> "int | None":
+    """Match an IP address to a DHCP server by subnet prefix and return its VLAN."""
+    if not ip or not servers:
+        return None
+    prefix = ".".join(ip.split(".")[:3])
+    for s in servers:
+        for ref in (s.get("gateway", ""), s.get("subnet", ""),
+                    s.get("range_start", "") or ""):
+            if ref and ref.startswith(prefix + "."):
+                return s.get("vlan")
+    return None
+
+
 def merge_clients(
     sophos_leases: list[dict],
     sophos_static: list[dict],
     unifi_clients: list[dict],
     unifi_aps: dict[str, str],
+    sophos_servers: "list[dict] | None" = None,
 ) -> list[dict]:
     """
     Merge Sophos and UniFi data into unified client records.
@@ -38,10 +52,13 @@ def merge_clients(
         sophos_static: Static DHCP reservations from Sophos XML API.
         unifi_clients: Active clients from UniFi stat/sta endpoint.
         unifi_aps: Dict mapping AP MAC -> AP name.
+        sophos_servers: DHCP server configs with VLAN info for IP-based VLAN lookup.
 
     Returns:
         List of merged client dicts.
     """
+    servers = sophos_servers or []
+
     # Index Sophos data by MAC (primary) and IP (fallback)
     sophos_by_mac: dict[str, dict] = {}
     sophos_by_ip: dict[str, dict] = {}
@@ -49,7 +66,9 @@ def merge_clients(
     for lease in sophos_leases:
         mac = normalize_mac(lease.get("mac", ""))
         ip = normalize_ip(lease.get("ip", ""))
-        record = {**lease, "mac": mac, "ip": ip, "sophos_type": "dynamic"}
+        # Attach VLAN from server config if not already set
+        vlan = lease.get("vlan") or _vlan_for_ip(ip, servers)
+        record = {**lease, "mac": mac, "ip": ip, "sophos_type": "dynamic", "vlan": vlan}
         if mac:
             sophos_by_mac[mac] = record
         if ip:

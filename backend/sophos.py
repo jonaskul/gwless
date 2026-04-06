@@ -192,8 +192,55 @@ def _api_url(config: dict) -> str:
     return f"https://{config['host']}:{port}/webconsole/APIController"
 
 
+def _vlan_from_name(name: str) -> "int | None":
+    """Extract VLAN ID from interface name: 'VLAN91' → 91, 'Port5.91' → 91."""
+    import re as _re
+    m = _re.search(r'\.(\d+)$|[Vv][Ll][Aa][Nn](\d+)', name)
+    if m:
+        return int(m.group(1) or m.group(2))
+    return None
+
+
+def _fetch_vlan_map(config: dict) -> dict:
+    """
+    Fetch VLAN entity from Sophos XML API.
+    Returns {interface_name: vlan_id (int)} — empty dict on any failure.
+    """
+    try:
+        url = _api_url(config)
+        payload = _build_payload(config, "VLAN")
+        resp = requests.post(
+            url,
+            data={"reqxml": payload},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            verify=config.get("verify_ssl", False),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        doc = xmltodict.parse(resp.text)
+        raw = doc.get("Response", {}).get("VLAN", {})
+        entries = raw if isinstance(raw, list) else ([raw] if raw else [])
+        vlan_map = {}
+        for entry in entries:
+            if not entry:
+                continue
+            name = entry.get("Name") or entry.get("@name", "")
+            vid_raw = entry.get("VLANID") or entry.get("VLANId") or entry.get("ID") or entry.get("Tag")
+            try:
+                vid = int(vid_raw) if vid_raw is not None else None
+            except (ValueError, TypeError):
+                vid = None
+            if name and vid:
+                vlan_map[name] = vid
+        logger.debug("Sophos VLAN map: %s", vlan_map)
+        return vlan_map
+    except Exception as exc:
+        logger.debug("Could not fetch Sophos VLAN map (non-fatal): %s", exc)
+        return {}
+
+
 def _build_payload(config: dict, get_element: str) -> str:
-    _ALLOWED_ELEMENTS = {"DHCPServer"}
+    _ALLOWED_ELEMENTS = {"DHCPServer", "VLAN"}
     if get_element not in _ALLOWED_ELEMENTS:
         raise ValueError(f"Invalid element: {get_element!r}. Allowed: {_ALLOWED_ELEMENTS}")
     username = xml_escape(config.get("username", ""))
@@ -249,6 +296,7 @@ def fetch_dhcp_server_config(config: dict) -> dict:
     payload = _build_payload(config, "DHCPServer")
 
     logger.debug("Fetching Sophos XML API: %s", url)
+    vlan_map = _fetch_vlan_map(config)
     resp = requests.post(
         url,
         data={"reqxml": payload},
@@ -277,9 +325,12 @@ def fetch_dhcp_server_config(config: dict) -> dict:
         if not srv:
             continue
 
+        iface = srv.get("Interface", "")
+        vlan_id = vlan_map.get(iface) or _vlan_from_name(iface)
         server_info = {
             "name": srv.get("Name") or srv.get("@name", ""),
-            "interface": srv.get("Interface", ""),
+            "interface": iface,
+            "vlan": vlan_id,
             "subnet": srv.get("SubnetMask") or srv.get("Network", ""),
             "gateway": srv.get("Gateway") or srv.get("GatewayIP", ""),
             "dns1": srv.get("PrimaryDNSServer") or srv.get("DNS1", ""),
@@ -310,6 +361,7 @@ def fetch_dhcp_server_config(config: dict) -> dict:
                     or res.get("Hostname", "")
                 ),
                 "scope_name": server_info["name"],
+                "vlan": server_info.get("vlan"),
                 "sophos_type": "static",
             })
 
@@ -432,7 +484,9 @@ def diagnose_api(config: dict, log_fn=None) -> None:
 
         for srv in servers:
             keys = [k for k in srv.keys() if not k.startswith("@")]
-            log(f"  Server '{srv.get('Name') or srv.get('@name', '?')}': fields = {keys}")
+            iface = srv.get("Interface", "?")
+            vlan_id = vlan_map.get(iface) or _vlan_from_name(iface)
+            log(f"  Server '{srv.get('Name') or srv.get('@name', '?')}': interface={iface!r}, vlan={vlan_id}, fields={keys}")
             sl = srv.get("StaticLease")
             if sl is not None:
                 log(f"    StaticLease type={type(sl).__name__}, value={repr(sl)[:300]}")
