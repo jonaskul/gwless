@@ -1,3 +1,7 @@
+## v0.0.42 — 2026-04-06
+
+- feat: animate side panel open with opacity + slide-in transition
+
 ## v0.0.41 — 2026-04-06
 
 - feat: settings close button, button labels, UniFi port field
