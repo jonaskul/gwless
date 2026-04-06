@@ -54,6 +54,8 @@ class SyslogReceiver:
     """
     Background UDP syslog receiver that builds a live DHCP lease table.
 
+    Leases are persisted to SQLite so they survive restarts.
+
     Call start() after construction. Call stop() on shutdown.
     Use get_leases() to retrieve the current active leases as a list of dicts
     compatible with parse_isc_leases() output (for the merger).
@@ -72,6 +74,62 @@ class SyslogReceiver:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+
+        self._load_persisted_leases()
+
+    # ------------------------------------------------------------------
+    # Persistence helpers
+    # ------------------------------------------------------------------
+
+    def _load_persisted_leases(self) -> None:
+        """Load non-expired leases from SQLite into memory on startup."""
+        try:
+            from .history import load_leases
+            rows = load_leases()
+            now = time.time()
+            loaded = 0
+            for row in rows:
+                mac = row["mac"]
+                seen_at = float(row["seen_at"])
+                lease_time = int(row["lease_time"])
+                if now < seen_at + max(lease_time, 3600) * 1.1:
+                    self._leases[mac] = {
+                        "mac": mac,
+                        "ip": row["ip"],
+                        "hostname": row["hostname"] or "",
+                        "starts": row["starts"] or "",
+                        "ends": row["ends"] or "",
+                        "binding_state": "active",
+                        "_seen_at": seen_at,
+                        "_lease_time": lease_time,
+                    }
+                    loaded += 1
+            if loaded:
+                logger.info("Syslog: loaded %d persisted lease(s) from DB", loaded)
+        except Exception as exc:
+            logger.warning("Syslog: could not load persisted leases: %s", exc)
+
+    def _persist_lease(self, mac: str, lease: dict) -> None:
+        try:
+            from .history import upsert_lease
+            upsert_lease(
+                mac=mac,
+                ip=lease["ip"],
+                hostname=lease["hostname"],
+                starts=lease["starts"],
+                ends=lease["ends"],
+                seen_at=lease["_seen_at"],
+                lease_time=lease["_lease_time"],
+            )
+        except Exception as exc:
+            logger.warning("Syslog: failed to persist lease %s: %s", mac, exc)
+
+    def _remove_persisted_lease(self, mac: str) -> None:
+        try:
+            from .history import delete_lease
+            delete_lease(mac)
+        except Exception as exc:
+            logger.warning("Syslog: failed to remove persisted lease %s: %s", mac, exc)
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -171,18 +229,19 @@ class SyslogReceiver:
             except ValueError:
                 lease_time = 86400
 
+            lease = {
+                "mac": mac,
+                "ip": src_ip,
+                "hostname": hostname,
+                "starts": _fmt_ts(now),
+                "ends": _fmt_ts(now + lease_time),
+                "binding_state": "active",
+                "_seen_at": now,
+                "_lease_time": lease_time,
+            }
             with self._lock:
-                self._leases[mac] = {
-                    "mac": mac,
-                    "ip": src_ip,
-                    "hostname": hostname,
-                    "starts": _fmt_ts(now),
-                    "ends": _fmt_ts(now + lease_time),
-                    "binding_state": "active",
-                    # internal tracking fields (stripped in get_leases)
-                    "_seen_at": now,
-                    "_lease_time": lease_time,
-                }
+                self._leases[mac] = lease
+            self._persist_lease(mac, lease)
             logger.debug(
                 "Syslog DHCP renew: %s → %s (%s)", mac, src_ip, hostname or "—"
             )
@@ -191,6 +250,7 @@ class SyslogReceiver:
             with self._lock:
                 removed = self._leases.pop(mac, None)
             if removed:
+                self._remove_persisted_lease(mac)
                 logger.debug("Syslog DHCP %s: %s (%s)", status, mac, src_ip)
 
     # ------------------------------------------------------------------
@@ -212,9 +272,11 @@ class SyslogReceiver:
                 if now < lease["_seen_at"] + max(lease["_lease_time"], 3600) * 1.1
             }
             if len(active) != len(self._leases):
-                expired = len(self._leases) - len(active)
-                logger.debug("Syslog: pruned %d expired lease(s)", expired)
+                expired_macs = set(self._leases) - set(active)
+                logger.debug("Syslog: pruned %d expired lease(s)", len(expired_macs))
                 self._leases = active
+                for mac in expired_macs:
+                    self._remove_persisted_lease(mac)
 
             return [
                 {k: v for k, v in lease.items() if not k.startswith("_")}

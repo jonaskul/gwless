@@ -44,10 +44,58 @@ def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS events_mac ON events(mac);
             CREATE INDEX IF NOT EXISTS events_ts  ON events(ts);
+            CREATE TABLE IF NOT EXISTS dhcp_leases (
+                mac           TEXT PRIMARY KEY,
+                ip            TEXT NOT NULL,
+                hostname      TEXT,
+                starts        TEXT,
+                ends          TEXT,
+                binding_state TEXT DEFAULT 'active',
+                seen_at       INTEGER NOT NULL,
+                lease_time    INTEGER NOT NULL DEFAULT 86400
+            );
         """)
         cutoff = int(time.time()) - _PRUNE_DAYS * 86400
         db.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
     logger.info("History DB initialised at %s", DB_PATH)
+
+
+# ---------------------------------------------------------------------------
+# DHCP lease persistence (for syslog receiver)
+# ---------------------------------------------------------------------------
+
+def upsert_lease(mac: str, ip: str, hostname: str, starts: str, ends: str,
+                 seen_at: float, lease_time: int) -> None:
+    """Insert or update a DHCP lease."""
+    with _lock, _conn() as db:
+        db.execute(
+            """INSERT INTO dhcp_leases
+               (mac, ip, hostname, starts, ends, binding_state, seen_at, lease_time)
+               VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+               ON CONFLICT(mac) DO UPDATE SET
+                 ip=excluded.ip, hostname=excluded.hostname,
+                 starts=excluded.starts, ends=excluded.ends,
+                 seen_at=excluded.seen_at, lease_time=excluded.lease_time,
+                 binding_state='active'""",
+            (mac, ip, hostname, starts, ends, int(seen_at), lease_time),
+        )
+
+
+def delete_lease(mac: str) -> None:
+    """Remove a DHCP lease (on release/expire)."""
+    with _lock, _conn() as db:
+        db.execute("DELETE FROM dhcp_leases WHERE mac = ?", (mac,))
+
+
+def load_leases() -> list[dict]:
+    """Load all non-expired leases from DB. Called at startup."""
+    cutoff = int(time.time() * 1.1)  # small tolerance
+    with _conn() as db:
+        rows = db.execute(
+            "SELECT * FROM dhcp_leases WHERE seen_at + lease_time * 1.1 > ?",
+            (int(time.time()),),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def record_seen(clients: list[dict]) -> None:
