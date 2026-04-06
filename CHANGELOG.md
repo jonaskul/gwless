@@ -1,3 +1,7 @@
+## v0.0.41 — 2026-04-06
+
+- feat: settings close button, button labels, UniFi port field
+
 ## v0.0.40 — 2026-04-06
 
 - feat: SSH disabled by default with opt-in checkbox, single password field
