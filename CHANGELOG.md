@@ -1,3 +1,7 @@
+## v0.0.27 — 2026-04-06
+
+- (no code changes)
+
 ## v0.0.26 — 2026-04-06
 
 - fix: kvRow was escaping HTML in Status field — add raw parameter
