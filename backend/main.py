@@ -565,6 +565,25 @@ async def test_unifi(body: Optional[UniFiConfig] = None):
 
 
 # ---------------------------------------------------------------------------
+# Version
+# ---------------------------------------------------------------------------
+
+def _read_version() -> str:
+    for candidate in [
+        Path(__file__).parent.parent / "VERSION",
+        Path("/opt/gwless/VERSION"),
+    ]:
+        if candidate.exists():
+            return candidate.read_text().strip()
+    return "unknown"
+
+
+@app.get("/api/version")
+async def get_version():
+    return {"version": _read_version()}
+
+
+# ---------------------------------------------------------------------------
 # Static frontend — mount LAST so /api/* routes are not shadowed
 # ---------------------------------------------------------------------------
 

@@ -857,6 +857,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     </div>
 
     <div class="settings-footer">
+      <span id="gwless-version" style="font-size:11px;color:var(--text-muted);margin-right:auto;align-self:center;"></span>
       <span id="save-result" class="save-result"></span>
       <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
       <button class="btn-save" id="btn-save" onclick="saveSettings()">Save</button>
@@ -1426,6 +1427,10 @@ async function openSettings() {
   document.getElementById('settings-overlay').classList.add('open');
   _refreshSyslogStatus();
   _syslogStatusInterval = setInterval(_refreshSyslogStatus, 5000);
+  fetch('/api/version').then(r => r.json()).then(d => {
+    const el = document.getElementById('gwless-version');
+    if (el) el.textContent = 'Gwless ' + (d.version || '');
+  }).catch(() => {});
 }
 
 function closeSettings() {
