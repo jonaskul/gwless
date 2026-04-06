@@ -14,7 +14,7 @@ IFS='.' read -r major minor patch <<< "$current"
 new_version="${major}.${minor}.$((patch + 1))"
 
 # ── Collect commits since last version bump ───────────────────────────────────
-last_bump=$(git log --format="%H %s" | grep " chore: bump version" | head -1 | awk '{print $1}')
+last_bump=$(git log --format="%H %s" | grep " chore: bump version" | head -1 | awk '{print $1}' || true)
 if [ -n "$last_bump" ]; then
     range="${last_bump}..HEAD"
 else
