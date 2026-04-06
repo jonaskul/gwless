@@ -1,3 +1,7 @@
+## v0.0.30 — 2026-04-06
+
+- fix: static DHCP reservations — handle nested StaticLease structure
+
 ## v0.0.29 — 2026-04-06
 
 - (no code changes)
