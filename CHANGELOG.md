@@ -1,3 +1,7 @@
+## v0.0.6 — 2026-04-06
+
+- feat: add /api/version endpoint and version display in Settings footer
+
 ## v0.0.5 — 2026-04-06
 
 - fix: pre-push hook grep no-match with set -euo pipefail
