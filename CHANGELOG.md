@@ -1,3 +1,7 @@
+## v0.0.10 — 2026-04-06
+
+- feat: update check against GitHub main + disable button if already up to date
+
 ## v0.0.9 — 2026-04-06
 
 - (no code changes)
