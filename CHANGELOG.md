@@ -1,3 +1,21 @@
+## v0.0.3 — 2026-04-06
+
+- feat: add VERSION file (0.0.2)
+- feat: add pre-push hook for auto version bump and CHANGELOG
+- feat: embedded UDP syslog receiver for real-time DHCP lease tracking
+- fix(security): harden credentials, input validation, and frontend auth
+- fix(install): copy gwless.service from within container
+- Merge pull request #1 from jonaskul/claude/network-dashboard-app-XrHL3
+- fix(install): apt-get update before installing curl in remote path
+- Support remote installation via curl in install.sh
+- fix(install): download from GitHub when run via curl
+- Improve container startup reliability with IP and DNS checks
+- fix(install): wait for container network before apt-get
+- Add web-based settings UI for credential management
+- Build complete Gwless application with in-app settings
+- Add Gwless: unified DHCP & network client dashboard
+- Add complete Gwless application — DHCP & Network Client Dashboard
+
 ## v0.0.2 — 2026-04-06
 
 - feat: embedded UDP syslog receiver for real-time DHCP lease tracking
