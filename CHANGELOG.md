@@ -1,3 +1,7 @@
+## v0.0.37 — 2026-04-06
+
+- fix: events modal styling, remove header theme btn, settings opens on General, filters stay open
+
 ## v0.0.36 — 2026-04-06
 
 - feat: multi-select filters, General settings tab, fix history button
