@@ -1,3 +1,7 @@
+## v0.0.24 — 2026-04-06
+
+- feat: explicit check-for-update flow with remote changelog
+
 ## v0.0.23 — 2026-04-06
 
 - (no code changes)
