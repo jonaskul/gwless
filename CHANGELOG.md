@@ -1,3 +1,7 @@
+## v0.0.7 — 2026-04-06
+
+- (no code changes)
+
 ## v0.0.6 — 2026-04-06
 
 - feat: add /api/version endpoint and version display in Settings footer
