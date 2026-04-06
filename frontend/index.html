@@ -484,7 +484,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   animation: spin 0.7s linear infinite;
 }
 
-/* ── Events + Theme + Settings buttons ── */
+/* ── Events + Settings buttons ── */
 #events-btn {
   background: none;
   border: 1px solid var(--border);
@@ -498,20 +498,6 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   flex-shrink: 0;
 }
 #events-btn:hover { color: var(--accent); border-color: var(--accent); }
-
-#theme-btn {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 15px;
-  line-height: 1;
-  padding: 5px 9px;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-  flex-shrink: 0;
-}
-#theme-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 #settings-btn {
   background: none;
@@ -735,7 +721,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 }
 .save-result.err { color: var(--red); }
 
-/* ── Events overlay (fix: was missing ID-based rules) ── */
+/* ── Events overlay ── */
 #events-overlay {
   display: none;
   position: fixed;
@@ -748,6 +734,37 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   overflow-y: auto;
 }
 #events-overlay.open { display: flex; }
+
+#events-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 95vw;
+  max-width: 660px;
+  overflow: hidden;
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.settings-close:hover { background: var(--border); color: var(--text); }
 </style>
 </head>
 <body>
@@ -774,7 +791,6 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       </div>
       <button id="refresh-btn">↻ <span id="countdown">—</span></button>
       <button id="events-btn" title="Recent events">⏱</button>
-      <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑</button>
       <button id="settings-btn" title="Settings">⚙</button>
     </div>
   </div>
@@ -868,15 +884,15 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   <div id="settings-modal">
     <h2>⚙ Settings</h2>
     <div class="settings-tabs">
-      <button class="settings-tab-btn" data-tab="general" onclick="switchTab('general')">General</button>
-      <button class="settings-tab-btn active" data-tab="unifi" onclick="switchTab('unifi')">UniFi</button>
+      <button class="settings-tab-btn active" data-tab="general" onclick="switchTab('general')">General</button>
+      <button class="settings-tab-btn" data-tab="unifi" onclick="switchTab('unifi')">UniFi</button>
       <button class="settings-tab-btn" data-tab="sophos" onclick="switchTab('sophos')">Sophos</button>
       <button class="settings-tab-btn" data-tab="app" onclick="switchTab('app')">App</button>
       <button class="settings-tab-btn" data-tab="update" onclick="switchTab('update')">Update</button>
     </div>
 
     <!-- General -->
-    <div class="settings-section" data-tab="general" style="display:none">
+    <div class="settings-section" data-tab="general">
       <div class="settings-section-title">Appearance &amp; Display</div>
       <div class="settings-row triple">
         <div class="settings-field">
@@ -993,7 +1009,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     </div>
 
     <!-- UniFi -->
-    <div class="settings-section" data-tab="unifi">
+    <div class="settings-section" data-tab="unifi" style="display:none">
       <div class="settings-section-title">UniFi Network Application v10</div>
       <div class="settings-row">
         <div class="settings-field">
@@ -1429,6 +1445,9 @@ function _initMultiSelect(btnId, panelId, allLabel, getSelected, setSelected) {
     document.querySelectorAll('.ms-panel').forEach(p => { p.hidden = true; });
     panel.hidden = !wasHidden;
   });
+
+  // Prevent clicks inside panel (checkboxes) from bubbling to document close handler
+  panel.addEventListener('click', e => e.stopPropagation());
 
   return { rebuild };
 }
@@ -1868,7 +1887,7 @@ async function openSettings() {
   document.getElementById('g-datefmt').value = prefs.datefmt;
 
   document.getElementById('settings-overlay').classList.add('open');
-  switchTab('unifi');
+  switchTab('general');
   _refreshSyslogStatus();
   _syslogStatusInterval = setInterval(_refreshSyslogStatus, 5000);
   fetch('/api/update/info').then(r => r.json()).then(d => {
