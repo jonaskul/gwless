@@ -1,3 +1,7 @@
+## v0.0.15 — 2026-04-06
+
+- feat: persist syslog DHCP leases to SQLite — survive restarts
+
 ## v0.0.14 — 2026-04-06
 
 - (no code changes)
