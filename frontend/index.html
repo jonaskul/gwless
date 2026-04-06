@@ -102,7 +102,7 @@ html, body {
   align-items: center;
 }
 
-select.filter {
+select.filter, button.filter {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -112,8 +112,26 @@ select.filter {
   padding: 5px 10px;
   cursor: pointer;
   outline: none;
+  white-space: nowrap;
+  transition: border-color 0.15s;
 }
-select.filter:focus { border-color: var(--accent); }
+select.filter:focus, button.filter:focus,
+button.filter:hover { border-color: var(--accent); }
+
+/* ── Multi-select dropdown ── */
+.ms-wrap { position: relative; }
+.ms-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; min-width: 160px; z-index: 50;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 0; box-shadow: 0 4px 12px rgba(0,0,0,.35); max-height: 220px;
+  overflow-y: auto;
+}
+.ms-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 12px;
+  font-size: 13px; cursor: pointer; color: var(--text); user-select: none;
+}
+.ms-item:hover { background: var(--surface2); }
+.ms-item input[type=checkbox] { accent-color: var(--accent); flex-shrink: 0; }
 
 #refresh-btn {
   background: none;
@@ -716,6 +734,20 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   margin-right: auto;
 }
 .save-result.err { color: var(--red); }
+
+/* ── Events overlay (fix: was missing ID-based rules) ── */
+#events-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 200;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px;
+  overflow-y: auto;
+}
+#events-overlay.open { display: flex; }
 </style>
 </head>
 <body>
@@ -728,20 +760,18 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       <input id="search" type="text" placeholder="Search hostname, IP, MAC, vendor…" autocomplete="off" spellcheck="false">
     </div>
     <div class="header-filters">
-      <select id="filter-vlan" class="filter">
-        <option value="">All VLANs</option>
-      </select>
-      <select id="filter-source" class="filter">
-        <option value="">All sources</option>
-        <option value="both">Matched</option>
-        <option value="sophos_only">Sophos only</option>
-        <option value="unifi_only">UniFi only</option>
-      </select>
-      <select id="filter-status" class="filter">
-        <option value="">All status</option>
-        <option value="online">Online</option>
-        <option value="offline">Offline</option>
-      </select>
+      <div class="ms-wrap" id="ms-vlan">
+        <button class="filter" id="ms-vlan-btn" type="button">All VLANs ▾</button>
+        <div class="ms-panel" id="ms-vlan-panel" hidden></div>
+      </div>
+      <div class="ms-wrap" id="ms-source">
+        <button class="filter" id="ms-source-btn" type="button">All sources ▾</button>
+        <div class="ms-panel" id="ms-source-panel" hidden></div>
+      </div>
+      <div class="ms-wrap" id="ms-status">
+        <button class="filter" id="ms-status-btn" type="button">All status ▾</button>
+        <div class="ms-panel" id="ms-status-panel" hidden></div>
+      </div>
       <button id="refresh-btn">↻ <span id="countdown">—</span></button>
       <button id="events-btn" title="Recent events">⏱</button>
       <button id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark mode">◑</button>
@@ -838,10 +868,39 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   <div id="settings-modal">
     <h2>⚙ Settings</h2>
     <div class="settings-tabs">
-      <button class="settings-tab-btn active" onclick="switchTab('unifi')">UniFi</button>
-      <button class="settings-tab-btn" onclick="switchTab('sophos')">Sophos</button>
-      <button class="settings-tab-btn" onclick="switchTab('app')">App</button>
-      <button class="settings-tab-btn" onclick="switchTab('update')">Update</button>
+      <button class="settings-tab-btn" data-tab="general" onclick="switchTab('general')">General</button>
+      <button class="settings-tab-btn active" data-tab="unifi" onclick="switchTab('unifi')">UniFi</button>
+      <button class="settings-tab-btn" data-tab="sophos" onclick="switchTab('sophos')">Sophos</button>
+      <button class="settings-tab-btn" data-tab="app" onclick="switchTab('app')">App</button>
+      <button class="settings-tab-btn" data-tab="update" onclick="switchTab('update')">Update</button>
+    </div>
+
+    <!-- General -->
+    <div class="settings-section" data-tab="general" style="display:none">
+      <div class="settings-section-title">Appearance &amp; Display</div>
+      <div class="settings-row triple">
+        <div class="settings-field">
+          <label>Theme</label>
+          <select id="g-theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+        <div class="settings-field">
+          <label>Clock</label>
+          <select id="g-clock">
+            <option value="24">24-hour</option>
+            <option value="12">12-hour</option>
+          </select>
+        </div>
+        <div class="settings-field">
+          <label>Date format</label>
+          <select id="g-datefmt">
+            <option value="eu">European (DD/MM/YYYY)</option>
+            <option value="us">American (MM/DD/YYYY)</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <!-- Sophos -->
@@ -1041,9 +1100,9 @@ const state = {
   sortCol: 'hostname',
   sortDir: 'asc',
   search: '',
-  filterVlan: '',
-  filterSource: '',
-  filterStatus: '',
+  filterVlans: new Set(),
+  filterSources: new Set(),
+  filterStatuses: new Set(),
   selectedMac: null,
   countdownSec: 30,
   countdownTimer: null,
@@ -1059,10 +1118,7 @@ async function fetchClients() {
   document.getElementById('loading').classList.add('show');
   try {
     const params = new URLSearchParams();
-    if (state.search)       params.set('q', state.search);
-    if (state.filterVlan)   params.set('vlan', state.filterVlan);
-    if (state.filterSource) params.set('source', state.filterSource);
-    if (state.filterStatus) params.set('status', state.filterStatus);
+    if (state.search) params.set('q', state.search);
 
     const url = '/api/clients' + (params.toString() ? '?' + params : '');
     const resp = await fetch(url);
@@ -1108,6 +1164,12 @@ async function fetchStats() {
 // ─────────────────────────────────────────────────────────────────────────────
 function applyFilters() {
   let list = [...state.clients];
+  if (state.filterVlans.size)
+    list = list.filter(c => c.vlan != null && state.filterVlans.has(String(c.vlan)));
+  if (state.filterSources.size)
+    list = list.filter(c => state.filterSources.has(c.source));
+  if (state.filterStatuses.size)
+    list = list.filter(c => state.filterStatuses.has(c.online ? 'online' : 'offline'));
   list.sort((a, b) => sortCompare(a, b, state.sortCol, state.sortDir));
   state.filtered = list;
   renderTable();
@@ -1229,6 +1291,24 @@ function connectionLabel(c) {
   return c.unifi.essid || 'WiFi';
 }
 
+function _getPrefs() {
+  return {
+    theme:   localStorage.getItem('gwlessTheme') || 'dark',
+    clock:   localStorage.getItem('gwlessClock') || '24',
+    datefmt: localStorage.getItem('gwlessDateFmt') || 'eu',
+  };
+}
+
+function _applyPrefs(prefs) {
+  if (prefs.theme === 'light') {
+    document.documentElement.dataset.theme = 'light';
+    localStorage.setItem('gwlessTheme', 'light');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.removeItem('gwlessTheme');
+  }
+}
+
 function formatLeaseEnd(raw) {
   if (!raw) return { text: '—', cls: '' };
   // raw format: "YYYY/MM/DD HH:MM:SS" → normalize to ISO 8601 "YYYY-MM-DDTHH:MM:SSZ"
@@ -1242,7 +1322,12 @@ function formatLeaseEnd(raw) {
     let cls = '';
     if (diff < 0) cls = 'lease-exp';
     else if (hrs < 2) cls = 'lease-soon';
-    return { text: d.toLocaleString(), cls };
+    const p = _getPrefs();
+    const locale = p.datefmt === 'us' ? 'en-US' : 'en-GB';
+    return { text: d.toLocaleString(locale, {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: p.clock === '12'
+    }), cls };
   } catch {
     return { text: raw, cls: '' };
   }
@@ -1303,14 +1388,60 @@ function showFetchError(msg) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Multi-select component
+// ─────────────────────────────────────────────────────────────────────────────
+function _initMultiSelect(btnId, panelId, allLabel, getSelected, setSelected) {
+  const btn   = document.getElementById(btnId);
+  const panel = document.getElementById(panelId);
+  if (!btn || !panel) return;
+
+  function _updateLabel() {
+    const checked = [...panel.querySelectorAll('input[type=checkbox]:checked')];
+    if (checked.length === 0) {
+      btn.textContent = allLabel + ' ▾';
+    } else {
+      btn.textContent = checked.map(c => c.dataset.label).join(', ') + ' ▾';
+    }
+  }
+
+  function rebuild(items) {
+    const prev = getSelected();
+    panel.innerHTML = items.map(({ value, label }) =>
+      `<label class="ms-item">
+        <input type="checkbox" value="${esc(value)}" data-label="${esc(label)}"${prev.has(value) ? ' checked' : ''}>
+        ${esc(label)}
+      </label>`
+    ).join('');
+    panel.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const sel = new Set([...panel.querySelectorAll('input:checked')].map(c => c.value));
+        setSelected(sel);
+        _updateLabel();
+        applyFilters();
+      });
+    });
+    _updateLabel();
+  }
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const wasHidden = panel.hidden;
+    document.querySelectorAll('.ms-panel').forEach(p => { p.hidden = true; });
+    panel.hidden = !wasHidden;
+  });
+
+  return { rebuild };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VLAN filter population
 // ─────────────────────────────────────────────────────────────────────────────
+let _msVlan = null;
+
 function updateVlanFilter() {
-  const sel = document.getElementById('filter-vlan');
-  const current = sel.value;
-  const vlans = [...new Set(state.clients.map(c => c.vlan).filter(v => v != null))].sort((a,b)=>a-b);
-  sel.innerHTML = '<option value="">All VLANs</option>' +
-    vlans.map(v => `<option value="${v}"${v == current?' selected':''}>${v}</option>`).join('');
+  if (!_msVlan) return;
+  const vlans = [...new Set(state.clients.map(c => c.vlan).filter(v => v != null))].sort((a, b) => a - b);
+  _msVlan.rebuild(vlans.map(v => ({ value: String(v), label: 'VLAN ' + v })));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1409,7 +1540,13 @@ function buildPanelContent(c) {
 }
 
 function _fmtTs(ts) {
-  return new Date(ts * 1000).toLocaleString();
+  const p = _getPrefs();
+  const d = new Date(ts * 1000);
+  const locale = p.datefmt === 'us' ? 'en-US' : 'en-GB';
+  return d.toLocaleString(locale, {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: p.clock === '12'
+  });
 }
 
 function _fmtAgo(ts) {
@@ -1565,15 +1702,29 @@ function initEvents() {
     }, 300);
   });
 
-  // Filters
-  ['filter-vlan', 'filter-source', 'filter-status'].forEach(id => {
-    document.getElementById(id).addEventListener('change', e => {
-      if (id === 'filter-vlan')   state.filterVlan   = e.target.value;
-      if (id === 'filter-source') state.filterSource = e.target.value;
-      if (id === 'filter-status') state.filterStatus = e.target.value;
-      fetchClients().then(startCountdown);
-    });
-  });
+  // Multi-select filters (client-side filtering)
+  _msVlan = _initMultiSelect(
+    'ms-vlan-btn', 'ms-vlan-panel', 'All VLANs',
+    () => state.filterVlans,
+    sel => { state.filterVlans = sel; }
+  );
+  _initMultiSelect(
+    'ms-source-btn', 'ms-source-panel', 'All sources',
+    () => state.filterSources,
+    sel => { state.filterSources = sel; }
+  ).rebuild([
+    { value: 'both',        label: 'Matched (both)' },
+    { value: 'sophos_only', label: 'Sophos only'    },
+    { value: 'unifi_only',  label: 'UniFi only'     },
+  ]);
+  _initMultiSelect(
+    'ms-status-btn', 'ms-status-panel', 'All status',
+    () => state.filterStatuses,
+    sel => { state.filterStatuses = sel; }
+  ).rebuild([
+    { value: 'online',  label: 'Online'     },
+    { value: 'offline', label: 'Lease only' },
+  ]);
 
   // Manual refresh
   document.getElementById('refresh-btn').addEventListener('click', () => {
@@ -1665,7 +1816,7 @@ function switchTab(name) {
   document.querySelectorAll('#settings-modal .settings-section[data-tab]')
     .forEach(el => el.style.display = el.dataset.tab === name ? '' : 'none');
   document.querySelectorAll('.settings-tab-btn')
-    .forEach(btn => btn.classList.toggle('active', btn.textContent.toLowerCase() === name));
+    .forEach(btn => btn.classList.toggle('active', btn.dataset.tab === name));
 }
 
 async function openSettings() {
@@ -1709,6 +1860,13 @@ async function openSettings() {
   } catch (e) {
     console.error('Failed to load config:', e);
   }
+
+  // Populate General tab from localStorage
+  const prefs = _getPrefs();
+  document.getElementById('g-theme').value   = prefs.theme;
+  document.getElementById('g-clock').value   = prefs.clock;
+  document.getElementById('g-datefmt').value = prefs.datefmt;
+
   document.getElementById('settings-overlay').classList.add('open');
   switchTab('unifi');
   _refreshSyslogStatus();
@@ -1881,6 +2039,16 @@ async function saveSettings() {
   const secretVal = document.getElementById('a-secret').value;
   sessionStorage.setItem('gwlessSecret', secretVal);
 
+  // Save General prefs to localStorage (client-side only)
+  const newPrefs = {
+    theme:   document.getElementById('g-theme').value   || 'dark',
+    clock:   document.getElementById('g-clock').value   || '24',
+    datefmt: document.getElementById('g-datefmt').value || 'eu',
+  };
+  localStorage.setItem('gwlessClock', newPrefs.clock);
+  localStorage.setItem('gwlessDateFmt', newPrefs.datefmt);
+  _applyPrefs(newPrefs);
+
   const payload = {
     sophos: _collectSophosPayload(),
     syslog: _collectSyslogPayload(),
@@ -2049,6 +2217,11 @@ document.addEventListener('DOMContentLoaded', () => {
         closePanel();
       }
     }
+  });
+
+  // Close multi-select panels when clicking outside
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.ms-panel').forEach(p => { p.hidden = true; });
   });
 
   // Restore saved theme preference
