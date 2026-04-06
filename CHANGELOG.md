@@ -1,3 +1,7 @@
+## v0.0.38 — 2026-04-06
+
+- feat: clicking selected row again closes the side panel
+
 ## v0.0.37 — 2026-04-06
 
 - fix: events modal styling, remove header theme btn, settings opens on General, filters stay open
