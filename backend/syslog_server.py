@@ -71,6 +71,7 @@ class SyslogReceiver:
 
         self._leases: dict[str, dict] = {}   # mac → lease dict (with internal _keys)
         self._recent_raw: deque[str] = deque(maxlen=20)
+        self._recent_dhcp: deque[str] = deque(maxlen=10)  # DHCP-matched msgs for diagnostics
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -191,6 +192,15 @@ class SyslogReceiver:
     # Message parsing
     # ------------------------------------------------------------------
 
+    # Active-lease statuses across SFOS versions
+    _ACTIVE_STATUSES = frozenset({
+        "new", "renew", "inform", "bound", "add", "ack", "acknowledged",
+    })
+    # Release/expire statuses
+    _REMOVE_STATUSES = frozenset({
+        "release", "expire", "delete", "expired", "released",
+    })
+
     def _handle_message(self, msg: str, addr: tuple) -> None:
         self.messages_received += 1
         with self._lock:
@@ -198,12 +208,16 @@ class SyslogReceiver:
 
         fields = _parse_kv(msg)
 
-        # SFOS uses log_component="DHCP Server"
+        # Match on log_component (SFOS 22: "DHCP Server") OR log_subtype containing "dhcp"
         component = fields.get("log_component", "").lower()
-        if "dhcp" not in component:
+        subtype   = fields.get("log_subtype", "").lower()
+        if "dhcp" not in component and "dhcp" not in subtype:
             return
 
-        # SFOS uses status="Renew"|"Release"|"Expire" (not log_subtype)
+        # Capture every DHCP-matched message for diagnostics
+        with self._lock:
+            self._recent_dhcp.append(msg[:400])
+
         status = fields.get("status", "").lower()
 
         # IP: SFOS 18+ uses leased_ip; older versions used src_ip / ipaddress
@@ -215,15 +229,17 @@ class SyslogReceiver:
         src_mac = fields.get("src_mac", "")
 
         if not src_mac or not src_ip or src_mac == "-" or src_ip == "-":
+            logger.info(
+                "Syslog DHCP: missing mac=%r or ip=%r (status=%r, keys=%s)",
+                src_mac, src_ip, status, list(fields.keys()),
+            )
             return
 
         mac = _normalize_mac(src_mac)
-        # SFOS uses client_host_name; fallback to hostname
         hostname = fields.get("client_host_name") or fields.get("hostname", "")
         now = time.time()
-        self.last_event_ts = now
 
-        if status == "renew":
+        if status in self._ACTIVE_STATUSES:
             try:
                 lease_time = int(fields.get("lease_time", 86400))
             except ValueError:
@@ -241,17 +257,25 @@ class SyslogReceiver:
             }
             with self._lock:
                 self._leases[mac] = lease
+            self.last_event_ts = now
             self._persist_lease(mac, lease)
-            logger.debug(
-                "Syslog DHCP renew: %s → %s (%s)", mac, src_ip, hostname or "—"
+            logger.info(
+                "Syslog DHCP %s: %s → %s (%s)", status, mac, src_ip, hostname or "—"
             )
 
-        elif status in ("release", "expire"):
+        elif status in self._REMOVE_STATUSES:
             with self._lock:
                 removed = self._leases.pop(mac, None)
+            self.last_event_ts = now
             if removed:
                 self._remove_persisted_lease(mac)
-                logger.debug("Syslog DHCP %s: %s (%s)", status, mac, src_ip)
+            logger.info("Syslog DHCP %s: %s (%s)", status, mac, src_ip)
+
+        else:
+            logger.info(
+                "Syslog DHCP: unhandled status=%r for %s → %s (keys=%s)",
+                status, mac, src_ip, list(fields.keys()),
+            )
 
     # ------------------------------------------------------------------
     # Lease access
@@ -287,3 +311,8 @@ class SyslogReceiver:
         """Return the last up to 20 raw syslog messages received (any type)."""
         with self._lock:
             return list(self._recent_raw)
+
+    def get_recent_dhcp(self) -> list[str]:
+        """Return the last up to 10 messages that matched the DHCP component filter."""
+        with self._lock:
+            return list(self._recent_dhcp)
