@@ -1,3 +1,7 @@
+## v0.0.36 — 2026-04-06
+
+- feat: multi-select filters, General settings tab, fix history button
+
 ## v0.0.35 — 2026-04-06
 
 - fix: vlan_map not defined in diagnose_api — fetch it there too
