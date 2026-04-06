@@ -1,3 +1,7 @@
+## v0.0.39 — 2026-04-06
+
+- feat: move refresh button to far right of header
+
 ## v0.0.38 — 2026-04-06
 
 - feat: clicking selected row again closes the side panel
