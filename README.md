@@ -22,9 +22,9 @@ Aggregates DHCP lease data from **Sophos SFOS 22** and client data from **UniFi 
 - **DHCP scope overview** — `/api/scopes` shows used/total per scope
 - **Light/dark mode** — `◑` toggle in header, preference saved across sessions
 - **Live connection log** — test buttons stream step-by-step output in real time
-- **In-app update** — one-click update from GitHub with live progress and automatic reload
+- **In-app update** — check for updates, preview changelog, one-click update with live progress and auto-reload
 - **API secret** — optional header-based protection for mutating endpoints
-- **Embedded syslog receiver** — optional UDP syslog listener; Sophos sends DHCP events directly, no SSH admin access required
+- **Embedded syslog receiver** — optional UDP syslog listener; Sophos sends DHCP events in real time, no SSH admin access required. Leases are persisted to SQLite and survive restarts.
 
 ---
 
@@ -42,7 +42,7 @@ Sophos XGS (SFOS 22)                UniFi Network v10
                   (merger + TTL cache + syslog receiver)
                        │
                   SQLite history.db
-                  (devices + events)
+                  (devices, events, syslog DHCP leases)
                        │
                   Vanilla JS frontend
                   (single HTML file)
@@ -52,7 +52,7 @@ Sophos XGS (SFOS 22)                UniFi Network v10
 
 ## Syslog DHCP Events
 
-Gwless includes an optional embedded UDP syslog receiver. When enabled, Sophos SFOS sends DHCP events (Acknowledge, Release) as syslog datagrams and Gwless builds a live lease table from them — **no SSH admin access required**.
+Gwless includes an optional embedded UDP syslog receiver. When enabled, Sophos SFOS sends DHCP events as syslog datagrams and Gwless builds a live lease table from them — **no SSH admin access required**. Leases are written to SQLite so they survive service restarts.
 
 ### Why use syslog instead of SSH?
 
@@ -60,15 +60,16 @@ Gwless includes an optional embedded UDP syslog receiver. When enabled, Sophos S
 |---|---|---|
 | Sophos permission required | Admin with Advanced Shell access | Any admin account (Log Settings access) |
 | Data latency | Poll interval (default 60 s) | Real-time (events arrive within seconds) |
+| Persistence across restarts | Re-polled on startup | SQLite-backed, loaded immediately |
 | Setup complexity | SSH key/password + TOFU | Add syslog server IP in Sophos UI |
 
-When syslog is enabled and has received at least one event, it takes priority over SSH for DHCP lease data. SSH remains as a fallback if no syslog events have been received yet (e.g. just after startup).
+When syslog is enabled and has received at least one event, it takes priority over SSH for DHCP lease data. SSH remains as fallback if no syslog events have been received yet.
 
 ### Setup
 
 #### 1. Enable in Gwless Settings
 
-Open **⚙ Settings → Syslog DHCP Events**, tick **Enable syslog receiver**, set the port (default `514`), and save.
+Open **⚙ Settings → Sophos tab → Syslog DHCP Events**, tick **Enable syslog receiver**, set the port (default `514`), and save.
 
 > **Port 514 note:** Linux requires root to bind to ports below 1024. The default LXC installer runs as root. If you run Gwless unprivileged, use a port > 1024 (e.g. `5140`) and configure Sophos to send to that port.
 
@@ -84,11 +85,11 @@ Open **⚙ Settings → Syslog DHCP Events**, tick **Enable syslog receiver**, s
 4. Confirm that the **DHCP** component is included in event logs
 5. Click **Apply**
 
-Lease events appear in the **Status** field in Settings within seconds of the next DHCP activity on the network. You can also trigger it immediately by releasing/renewing a lease on any device.
+Lease events appear in the **Status** field in Settings within seconds of the next DHCP activity. You can trigger it immediately by releasing/renewing a lease on any device.
 
 #### 3. Verify
 
-The Settings status row will change from *"No events received yet"* to *"Receiving — N lease(s), last event Xs ago"* once the first DHCP Acknowledge syslog message arrives.
+The Settings status row will change from amber to green (*"Receiving — N lease(s), last event Xs ago"*) once the first DHCP event arrives.
 
 ---
 
@@ -105,8 +106,9 @@ The installer will:
 4. Install Python dependencies
 5. Copy app code and write a blank `config.yaml`
 6. Enable and start the `gwless` systemd service
+7. Configure console auto-login for easy access via `pct console`
 
-**No credentials are needed during install.** Open the dashboard URL printed at the end, click **⚙ Settings**, enter your Sophos and UniFi credentials, and use the **Test** buttons to verify connectivity before saving.
+**No credentials are needed during install.** Open the dashboard URL printed at the end, click **⚙ Settings**, enter your UniFi and Sophos credentials, and use the **Test** buttons to verify connectivity before saving.
 
 ---
 
@@ -114,11 +116,10 @@ The installer will:
 
 ### In-app (recommended)
 
-Open **⚙ Settings → Update → Update to latest**. This will:
-1. Download the latest code from GitHub
-2. Update Python dependencies
-3. Restart the service automatically
-4. Reload the page when the service is back online
+Open **⚙ Settings → Update tab → Check for update**. This will:
+1. Fetch the latest version and changelog from GitHub
+2. Show what's new and whether a newer version is available
+3. Click **Update to latest** to download the latest code, update dependencies, restart the service, and reload the page automatically
 
 `config.yaml`, `oui.json`, and `history.db` are preserved.
 
@@ -157,7 +158,7 @@ See [`config.yaml.example`](config.yaml.example) for all options. All credential
 | `unifi.site` | `default` | UniFi site name |
 | `syslog.enabled` | `false` | Enable embedded UDP syslog receiver |
 | `syslog.port` | `514` | UDP port to listen on |
-| `syslog.bind_host` | `0.0.0.0` | Bind address |
+| `syslog.bind_host` | `0.0.0.0` | Bind address for syslog receiver |
 | `app.oui_update_on_start` | `true` | Download OUI DB if missing |
 | `app.secret` | — | Optional API secret — see [Security](#security) |
 
@@ -170,7 +171,7 @@ See [`config.yaml.example`](config.yaml.example) for all options. All credential
 Sensitive endpoints (`POST /api/config`, test endpoints, `/api/refresh`, `/api/update/apply`) can be protected with a shared secret.
 
 1. Set `app.secret: your-secret` in `config.yaml` and restart the service
-2. Enter the same value in **⚙ Settings → Application → API Secret** in the browser — it is stored in `sessionStorage` and sent as an `X-Gwless-Secret` header on protected requests
+2. Enter the same value in **⚙ Settings → App tab → API Secret** in the browser — it is stored in `sessionStorage` and sent as an `X-Gwless-Secret` header on protected requests
 
 `GET /api/clients`, `GET /api/config` (passwords masked), and read-only endpoints remain accessible without the secret.
 
@@ -188,7 +189,7 @@ These files are stored in `/opt/gwless/` and are **never overwritten by updates*
 |------|---------|
 | `config.yaml` | All credentials and settings |
 | `oui.json` | OUI vendor database (~5 MB) |
-| `history.db` | SQLite device history — survives restarts, updates, and reboots |
+| `history.db` | SQLite database — device history, events, and syslog DHCP leases |
 
 ---
 
@@ -202,7 +203,8 @@ These files are stored in `/opt/gwless/` and are **never overwritten by updates*
 | `GET /api/clients/{mac}` | Full detail for one client |
 | `GET /api/scopes` | DHCP scopes with used/total lease counts |
 | `GET /api/stats` | Summary counts and data freshness |
-| `GET /api/syslog/status` | Syslog receiver status, lease count, last event timestamp |
+| `GET /api/syslog/status` | Syslog receiver status, lease count, last event timestamp, raw log |
+| `GET /api/version` | Installed version string |
 | `GET /health` | Source health: `ok` / `stale` / `error` |
 
 ### History
@@ -211,6 +213,14 @@ These files are stored in `/opt/gwless/` and are **never overwritten by updates*
 |----------|-------------|
 | `GET /api/history/device/{mac}` | First/last seen + event log for a MAC address |
 | `GET /api/history/events` | Recent events across all devices. Supports `?limit=` (max 500) |
+
+### Update
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/update/info` | Installed version + local changelog |
+| `GET /api/update/check` | Compare with latest on GitHub + remote changelog |
+| `POST /api/update/apply` | Run `update.sh` and stream output (SSE) |
 
 ### Configuration *(protected if `app.secret` is set)*
 
@@ -225,7 +235,6 @@ These files are stored in `/opt/gwless/` and are **never overwritten by updates*
 | `POST /api/test/sophos-ssh/stream` | Test Sophos SSH — streams live log (SSE) |
 | `POST /api/test/sophos-api/stream` | Test Sophos XML API — streams live log (SSE) |
 | `POST /api/test/unifi/stream` | Test UniFi — streams live log (SSE) |
-| `POST /api/update/apply` | Run `update.sh` and stream output (SSE) |
 
 ---
 
