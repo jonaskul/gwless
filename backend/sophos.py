@@ -207,6 +207,36 @@ def _build_payload(config: dict, get_element: str) -> str:
     return xml
 
 
+def _extract_reservations(srv: dict) -> list:
+    """
+    Extract static DHCP reservations from a server dict.
+    Handles flat list, single dict, and nested structures like
+    StaticLease = {"Host": [...]} or {"HostParams": [...]}.
+    """
+    raw = (
+        srv.get("StaticLease")
+        or srv.get("Static")
+        or srv.get("Host")
+        or srv.get("Reservation")
+    )
+    if not raw:
+        return []
+    # Nested container: {"Host": [...]} or {"HostParams": [...]} etc.
+    if isinstance(raw, dict):
+        for sub_key in ("Host", "HostParams", "Entry", "Lease", "Reservation"):
+            if sub_key in raw:
+                inner = raw[sub_key]
+                if isinstance(inner, list):
+                    return inner
+                if isinstance(inner, dict):
+                    return [inner]
+        # No known sub-key — treat the dict itself as a single reservation
+        return [raw]
+    if isinstance(raw, list):
+        return raw
+    return []
+
+
 def fetch_dhcp_server_config(config: dict) -> dict:
     """
     Fetch DHCPServer configuration from Sophos XML API.
@@ -268,16 +298,7 @@ def fetch_dhcp_server_config(config: dict) -> dict:
         servers.append(server_info)
 
         # Static MAC reservations
-        reservations = (
-            srv.get("StaticLease")
-            or srv.get("Static")
-            or srv.get("Host")
-            or srv.get("Reservation")
-            or []
-        )
-        if isinstance(reservations, dict):
-            reservations = [reservations]
-        for res in reservations:
+        for res in _extract_reservations(srv):
             if not res:
                 continue
             static_entries.append({
@@ -412,12 +433,13 @@ def diagnose_api(config: dict, log_fn=None) -> None:
         for srv in servers:
             keys = [k for k in srv.keys() if not k.startswith("@")]
             log(f"  Server '{srv.get('Name') or srv.get('@name', '?')}': fields = {keys}")
+            sl = srv.get("StaticLease")
+            if sl is not None:
+                log(f"    StaticLease type={type(sl).__name__}, value={repr(sl)[:300]}")
 
         def _count_reservations(s: dict) -> int:
-            r = s.get("StaticLease") or s.get("Static") or s.get("Host") or s.get("Reservation") or []
-            if isinstance(r, list):
-                return len(r)
-            return 1 if r else 0
+            r = _extract_reservations(s)
+            return len(r)
 
         static_count = sum(_count_reservations(s) for s in servers)
         log(f"Found {len(servers)} DHCP server(s), {static_count} static reservation(s)", "ok", final=True, ok=True)
