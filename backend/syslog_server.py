@@ -132,9 +132,14 @@ class SyslogReceiver:
         except Exception as exc:
             logger.warning("Syslog: failed to remove persisted lease %s: %s", mac, exc)
 
-    # ------------------------------------------------------------------
-    # Lifecycle
-    # ------------------------------------------------------------------
+    def _remove_persisted_lease_by_ip(self, ip: str) -> None:
+        try:
+            from .history import delete_lease_by_ip
+            delete_lease_by_ip(ip)
+        except Exception as exc:
+            logger.warning("Syslog: failed to remove lease by IP %s: %s", ip, exc)
+
+
 
     def start(self) -> None:
         """Start the background receiver thread."""
@@ -228,11 +233,33 @@ class SyslogReceiver:
             or fields.get("ipaddress", "")
         )
         src_mac = fields.get("src_mac", "")
+        mac_missing = not src_mac or src_mac == "-"
+        now = time.time()
 
-        if not src_mac or not src_ip or src_mac == "-" or src_ip == "-":
+        # Expire/Release events from XGS carry no MAC (src_mac="-") — remove by IP
+        if status in self._REMOVE_STATUSES and src_ip and src_ip != "-":
+            if mac_missing:
+                with self._lock:
+                    mac_by_ip = next(
+                        (m for m, l in self._leases.items() if l["ip"] == src_ip), None
+                    )
+                if mac_by_ip:
+                    with self._lock:
+                        self._leases.pop(mac_by_ip, None)
+                    self._remove_persisted_lease(mac_by_ip)
+                    self.last_event_ts = now
+                    logger.info("Syslog DHCP %s by IP: %s", status, src_ip)
+                else:
+                    self._remove_persisted_lease_by_ip(src_ip)
+                    logger.info("Syslog DHCP %s: no active lease for IP %s", status, src_ip)
+                return
+            # MAC present — fall through to normal remove logic below
+
+        # For all other events, both MAC and IP are required
+        if mac_missing or not src_ip or src_ip == "-":
             logger.info(
-                "Syslog DHCP: missing mac=%r or ip=%r (status=%r, keys=%s)",
-                src_mac, src_ip, status, list(fields.keys()),
+                "Syslog DHCP: missing mac=%r or ip=%r (status=%r)",
+                src_mac, src_ip, status,
             )
             return
 
@@ -243,7 +270,6 @@ class SyslogReceiver:
             or fields.get("client_host_name")
             or fields.get("hostname", "")
         )
-        now = time.time()
 
         if status in self._ACTIVE_STATUSES:
             try:

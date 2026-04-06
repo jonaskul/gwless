@@ -89,13 +89,18 @@ def delete_lease(mac: str) -> None:
 
 def load_leases() -> list[dict]:
     """Load all non-expired leases from DB. Called at startup."""
-    cutoff = int(time.time() * 1.1)  # small tolerance
     with _conn() as db:
         rows = db.execute(
             "SELECT * FROM dhcp_leases WHERE seen_at + lease_time * 1.1 > ?",
             (int(time.time()),),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def delete_lease_by_ip(ip: str) -> None:
+    """Remove a DHCP lease by IP address (for Expire events that lack a MAC)."""
+    with _lock, _conn() as db:
+        db.execute("DELETE FROM dhcp_leases WHERE ip = ?", (ip,))
 
 
 def record_seen(clients: list[dict]) -> None:
