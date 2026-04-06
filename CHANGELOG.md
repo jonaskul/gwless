@@ -1,3 +1,7 @@
+## v0.0.34 — 2026-04-06
+
+- feat: fetch VLAN IDs from Sophos and attach to leases
+
 ## v0.0.33 — 2026-04-06
 
 - docs: update README — tabbed settings, syslog persistence, new update flow, API table
