@@ -1,3 +1,7 @@
+## v0.0.19 — 2026-04-06
+
+- (no code changes)
+
 ## v0.0.18 — 2026-04-06
 
 - feat: settings tabs (UniFi first), MAC fallback for hostname, fix Norwegian syslog text
