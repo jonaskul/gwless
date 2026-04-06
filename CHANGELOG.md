@@ -1,3 +1,20 @@
+## v0.0.8 — 2026-04-06
+
+- merge: bring main up to date + add version/changelog display in UPDATE section
+- fix: correct Sophos SFOS syslog DHCP field names per official docs
+- debug: capture raw syslog messages to diagnose DHCP filter mismatch
+- feat: add version system (VERSION file + /api/version + Settings footer)
+- fix: use correct Sophos SFOS field names for DHCP server parsing
+- fix: suppress pip root/PATH warnings in install and update scripts
+- fix: update SSE generator to use async wrapper for run_in_executor
+- fix: expand Sophos static DHCP reservation parsing to cover SFOS field names
+- feat: configure console auto-login in LXC installer
+- Merge branch 'claude/network-dashboard-app-XrHL3'
+- docs: update README to reflect current feature set
+- feat: SQLite device history — first/last seen, event log
+- feat: add in-app update from GitHub
+- feat: add light mode toggle and live connection log panel
+
 ## v0.0.7 — 2026-04-06
 
 - (no code changes)
