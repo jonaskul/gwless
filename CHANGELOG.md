@@ -1,3 +1,7 @@
+## v0.0.23 — 2026-04-06
+
+- (no code changes)
+
 ## v0.0.22 — 2026-04-06
 
 - fix: syslog parser — use reported_ip and reported_host (XGS107 field names)
