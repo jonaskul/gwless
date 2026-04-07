@@ -838,7 +838,7 @@ async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = Fa
                 if value is not None:
                     CONFIG.setdefault(section, {})[key] = value
             # Persist back to disk (atomic write)
-            _save_config(dict(CONFIG))
+            _save_config(CONFIG)
         _rebuild_caches()
         logger.info("Config restored from backup (skip_passwords=%s)", skip_passwords)
 
