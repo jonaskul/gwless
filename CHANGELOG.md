@@ -1,3 +1,7 @@
+## v0.1.25 — 2026-04-07
+
+- perf: persistent SQLite connection, WAL mode, periodic pruning, reuse UniFi client
+
 ## v0.1.24 — 2026-04-07
 
 - fix: XSS hardening + security response headers
