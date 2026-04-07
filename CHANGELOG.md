@@ -1,3 +1,7 @@
+## v0.1.28 — 2026-04-07
+
+- fix: show version in header even when auth is enabled
+
 ## v0.1.27 — 2026-04-07
 
 - docs: add login page to README
