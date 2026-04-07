@@ -37,6 +37,19 @@ def _vlan_for_ip(ip: str, servers: list[dict]) -> "int | None":
     return None
 
 
+def _scope_for_ip(ip: str, servers: list[dict]) -> "str | None":
+    """Match an IP address to a DHCP server by subnet prefix and return its name."""
+    if not ip or not servers:
+        return None
+    prefix = ".".join(ip.split(".")[:3])
+    for s in servers:
+        for ref in (s.get("gateway", ""), s.get("subnet", ""),
+                    s.get("range_start", "") or ""):
+            if ref and ref.startswith(prefix + "."):
+                return s.get("name") or None
+    return None
+
+
 def merge_clients(
     sophos_leases: list[dict],
     sophos_static: list[dict],
@@ -66,9 +79,10 @@ def merge_clients(
     for lease in sophos_leases:
         mac = normalize_mac(lease.get("mac", ""))
         ip = normalize_ip(lease.get("ip", ""))
-        # Attach VLAN from server config if not already set
+        # Attach VLAN and scope_name from server config if not already set
         vlan = lease.get("vlan") or _vlan_for_ip(ip, servers)
-        record = {**lease, "mac": mac, "ip": ip, "sophos_type": "dynamic", "vlan": vlan}
+        scope_name = lease.get("scope_name") or _scope_for_ip(ip, servers)
+        record = {**lease, "mac": mac, "ip": ip, "sophos_type": "dynamic", "vlan": vlan, "scope_name": scope_name}
         if mac:
             sophos_by_mac[mac] = record
         if ip:
