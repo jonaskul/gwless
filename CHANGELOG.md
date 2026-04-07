@@ -1,3 +1,7 @@
+## v0.1.10 — 2026-04-07
+
+- feat: add ⬡ SVG favicon in accent blue
+
 ## v0.1.9 — 2026-04-07
 
 - fix: popover overflow — proper flex scroll containment + re-clamp after async history load
