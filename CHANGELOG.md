@@ -1,3 +1,7 @@
+## v0.1.19 — 2026-04-07
+
+- chore: remove redundant dict() copy in backup_restore
+
 ## v0.1.18 — 2026-04-07
 
 - chore: deduplicate v0.1.17 changelog entry
