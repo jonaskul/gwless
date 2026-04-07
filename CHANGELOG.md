@@ -1,3 +1,7 @@
+## v0.2.11 — 2026-04-07
+
+- feat: remove static DHCP reservation from device popover
+
 ## v0.2.10 — 2026-04-07
 
 - fix: send complete DHCPServer config when creating static reservation
