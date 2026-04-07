@@ -1,3 +1,7 @@
+## v0.2.28 — 2026-04-07
+
+- docs: update README for public release
+
 ## v0.2.27 — 2026-04-07
 
 - fix: always show Clear button, greyed out when no filters active
