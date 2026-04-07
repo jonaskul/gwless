@@ -88,14 +88,15 @@ def merge_clients(
         if ip:
             sophos_by_ip[ip] = record
 
-    # Merge static entries (don't overwrite active dynamic leases)
+    # Merge static entries — static reservations take priority over dynamic leases
+    # (a device can appear in both lists if it has a reservation and is currently active)
     for static in sophos_static:
         mac = normalize_mac(static.get("mac", ""))
         ip = normalize_ip(static.get("ip", ""))
         record = {**static, "mac": mac, "ip": ip, "sophos_type": "static"}
-        if mac and mac not in sophos_by_mac:
+        if mac:
             sophos_by_mac[mac] = record
-        if ip and ip not in sophos_by_ip:
+        if ip:
             sophos_by_ip[ip] = record
 
     # Index UniFi data by MAC (primary) and IP (fallback)
