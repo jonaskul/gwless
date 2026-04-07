@@ -1,3 +1,7 @@
+## v0.2.13 — 2026-04-07
+
+- debug: log Set request payload for DHCP reservation
+
 ## v0.2.12 — 2026-04-07
 
 - fix: static reservations take priority over dynamic leases in merger
