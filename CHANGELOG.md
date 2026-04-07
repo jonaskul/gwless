@@ -1,3 +1,7 @@
+## v0.2.25 — 2026-04-07
+
+- refactor: replace Status filter with Connection Type filter
+
 ## v0.2.24 — 2026-04-07
 
 - feat: show Static in Lease Expires column + lease type filter
