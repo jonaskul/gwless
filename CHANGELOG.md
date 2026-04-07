@@ -1,3 +1,7 @@
+## v0.2.20 — 2026-04-07
+
+- fix: send IPLease in compact format to preserve dynamic DHCP range
+
 ## v0.2.19 — 2026-04-07
 
 - fix: prevent static reservation within dynamic DHCP range
