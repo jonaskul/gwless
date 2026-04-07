@@ -471,10 +471,10 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     default_lt = _x(target.get("DefaultLeaseTime") or "86400")
     max_lt     = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
 
-    # IPLease: GET returns {'IP': 'start-end'}; Set needs separate StartIP/EndIP
+    # IPLease: GET returns {'IP': 'start-end'}; send it back verbatim (compact format)
     ip_range     = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
-    ip_range_raw = ip_range.get("IP", "") if isinstance(ip_range, dict) else ""
-    range_start, range_end = _split_ip_range(ip_range_raw)
+    ip_range_ip  = _x(ip_range.get("IP", "")) if isinstance(ip_range, dict) else ""
+    range_start, range_end = _split_ip_range(ip_range_ip)  # for validation only
 
     # Validate: static IP must not overlap the dynamic range
     if range_start and range_end and _ip_in_range(ip, range_start, range_end):
@@ -528,8 +528,7 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
 
     # ── Step 4: build optional XML fragments ─────────────────────────────────
     range_xml = (
-        f"<IPLease><StartIP>{_x(range_start)}</StartIP><EndIP>{_x(range_end)}</EndIP></IPLease>"
-        if range_start and range_end else ""
+        f"<IPLease><IP>{ip_range_ip}</IP></IPLease>" if ip_range_ip else ""
     )
     dns_xml     = ""
     if dns1:
@@ -628,9 +627,8 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
     default_lt = _x(target.get("DefaultLeaseTime") or "86400")
     max_lt     = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
 
-    ip_range     = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
-    ip_range_raw = ip_range.get("IP", "") if isinstance(ip_range, dict) else ""
-    range_start, range_end = _split_ip_range(ip_range_raw)
+    ip_range    = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
+    ip_range_ip = _x(ip_range.get("IP", "")) if isinstance(ip_range, dict) else ""
 
     conflict = _x(target.get("ConflictDetection"))
     relay    = _x(target.get("LeaseForRelay"))
@@ -664,8 +662,7 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
 
     # ── Step 4: build optional XML fragments ─────────────────────────────────
     range_xml = (
-        f"<IPLease><StartIP>{_x(range_start)}</StartIP><EndIP>{_x(range_end)}</EndIP></IPLease>"
-        if range_start and range_end else ""
+        f"<IPLease><IP>{ip_range_ip}</IP></IPLease>" if ip_range_ip else ""
     )
     dns_xml    = ""
     if dns1:
