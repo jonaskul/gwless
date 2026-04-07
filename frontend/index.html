@@ -2384,14 +2384,14 @@ async function downloadBackup() {
     const resp = await fetch(url, { headers: _getSecretHeaders() });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
+    const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const cd = resp.headers.get('Content-Disposition') || '';
     const match = cd.match(/filename="([^"]+)"/);
     a.download = match ? match[1] : 'gwless-backup.zip';
-    a.href = url;
+    a.href = blobUrl;
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(blobUrl);
     resultEl.className = 'test-result ok';
     resultEl.textContent = '✓ Downloaded';
   } catch (e) {
