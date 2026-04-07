@@ -426,6 +426,8 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     if target is None:
         return {"ok": False, "message": f"DHCP server '{server_name}' not found on Sophos"}
 
+    logger.debug("Sophos DHCPServer raw config for '%s': %s", server_name, target)
+
     # ── Step 2: extract required fields ──────────────────────────────────────
     def _x(val: Any) -> str:
         return xml_escape(str(val)) if val else ""
