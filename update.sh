@@ -9,6 +9,25 @@ GWLESS_DIR="/opt/gwless"
 CONFIG_FILE="${GWLESS_DIR}/config.yaml"
 CONFIG_BACKUP="/tmp/gwless-config.yaml.bak"
 LOG_FILE="/tmp/gwless-update.log"
+FORCE="${1:-}"
+
+# ── Version comparison ────────────────────────────────────────────────────────
+ver_tuple() { echo "$1" | tr -d 'v' | awk -F. '{printf "%05d%05d%05d", $1, $2, $3}'; }
+
+CURRENT_VERSION="$(cat "${GWLESS_DIR}/VERSION" 2>/dev/null | tr -d '[:space:]' || echo "0.0.0")"
+echo "[version] Installed: ${CURRENT_VERSION}"
+
+echo "[version] Fetching remote version..."
+REMOTE_VERSION="$(curl -fsSL "https://raw.githubusercontent.com/jonaskul/gwless/${GWLESS_BRANCH}/VERSION" 2>/dev/null | tr -d '[:space:]' || echo "")"
+
+if [ -z "$REMOTE_VERSION" ]; then
+    echo "[version] WARNING: Could not fetch remote version — proceeding anyway"
+elif [ "$(ver_tuple "$REMOTE_VERSION")" -le "$(ver_tuple "$CURRENT_VERSION")" ] && [ "$FORCE" != "--force" ]; then
+    echo "[version] Already up to date (${CURRENT_VERSION}). Use --force to reinstall."
+    exit 0
+else
+    echo "[version] Update available: ${CURRENT_VERSION} → ${REMOTE_VERSION}"
+fi
 
 # ── Backup config before touching anything ────────────────────────────────────
 if [ -f "$CONFIG_FILE" ]; then
