@@ -1,3 +1,7 @@
+## v0.1.22 — 2026-04-07
+
+- fix: switch OUI source to IEEE CSV + cleaner app settings tab
+
 ## v0.1.21 — 2026-04-07
 
 - fix: robust OUI download + manual update button in settings
