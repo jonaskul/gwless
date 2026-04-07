@@ -759,22 +759,33 @@ async def test_unifi_stream(body: Optional[UniFiConfig] = None):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/backup", dependencies=[Depends(_require_secret)])
-async def backup_download():
-    """Create a ZIP of config.yaml + history.db and return as file download."""
+async def backup_download(skip_passwords: bool = False):
+    """Create a ZIP of config.yaml + history.db and return as file download.
+
+    If skip_passwords=true password fields are stripped from config.yaml in the ZIP.
+    """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         cfg_path = _config_path()
         if cfg_path.exists():
-            zf.write(cfg_path, "config.yaml")
+            if skip_passwords:
+                with open(cfg_path) as f:
+                    cfg_data = yaml.safe_load(f) or {}
+                for section, key in [("sophos", "password"), ("unifi", "password"), ("app", "secret")]:
+                    cfg_data.get(section, {}).pop(key, None)
+                zf.writestr("config.yaml", yaml.dump(cfg_data, default_flow_style=False, allow_unicode=True))
+            else:
+                zf.write(cfg_path, "config.yaml")
         db_path = Path(__file__).parent.parent / "history.db"
         if db_path.exists():
             zf.write(db_path, "history.db")
     buf.seek(0)
     date_str = datetime.now().strftime("%Y%m%d-%H%M")
+    suffix = "-no-passwords" if skip_passwords else ""
     return Response(
         content=buf.read(),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="gwless-backup-{date_str}.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="gwless-backup-{date_str}{suffix}.zip"'},
     )
 
 

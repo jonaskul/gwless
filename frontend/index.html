@@ -1125,8 +1125,12 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px">
         Downloads a ZIP containing <code style="font-size:11px">config.yaml</code> (credentials &amp; settings)
         and <code style="font-size:11px">history.db</code> (device history).
-        <strong style="color:var(--amber)">The backup contains passwords in plaintext — store it securely.</strong>
       </p>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" id="backup-include-passwords">
+        Include passwords in backup
+        <span style="color:var(--amber);margin-left:4px" title="Backup will contain passwords in plaintext">⚠</span>
+      </label>
       <div class="settings-test-row">
         <button class="btn-test" onclick="downloadBackup()">⬇ Download backup</button>
         <span id="backup-result" class="test-result"></span>
@@ -2375,7 +2379,9 @@ async function downloadBackup() {
   resultEl.className = 'test-result busy';
   resultEl.textContent = 'Preparing…';
   try {
-    const resp = await fetch('/api/backup', { headers: _getSecretHeaders() });
+    const includePasswords = document.getElementById('backup-include-passwords').checked;
+    const url = '/api/backup' + (includePasswords ? '' : '?skip_passwords=true');
+    const resp = await fetch(url, { headers: _getSecretHeaders() });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const blob = await resp.blob();
     const url = URL.createObjectURL(blob);
