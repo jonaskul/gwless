@@ -1,9 +1,5 @@
 ## v0.1.17 — 2026-04-07
 
-- fix: SyntaxError from duplicate const url in downloadBackup
-
-## v0.1.17 — 2026-04-07
-
 - fix: duplicate `const url` in downloadBackup causing SyntaxError — entire script failed to parse, leaving all buttons unresponsive after updates since v0.1.13
 
 ## v0.1.16 — 2026-04-07
