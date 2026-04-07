@@ -1,3 +1,7 @@
+## v0.1.3 — 2026-04-07
+
+- feat: Backup & Restore tab in Settings
+
 ## v0.1.2 — 2026-04-07
 
 - feat: tteck-style installer with SSH/root password + OS update from web UI
