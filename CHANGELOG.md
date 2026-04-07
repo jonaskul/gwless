@@ -1,3 +1,7 @@
+## v0.2.14 — 2026-04-07
+
+- debug: log raw DHCPServer config dict from GET response
+
 ## v0.2.13 — 2026-04-07
 
 - debug: log Set request payload for DHCP reservation
