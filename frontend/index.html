@@ -1064,8 +1064,8 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
     <!-- App -->
     <div class="settings-section" data-tab="app" style="display:none">
       <div class="settings-section-title">Application</div>
-      <div class="settings-row">
-        <div class="settings-field">
+      <div class="settings-row single">
+        <div class="settings-field" style="max-width:180px">
           <label>Log Level</label>
           <select id="a-loglevel">
             <option value="info">info</option>
@@ -1074,19 +1074,29 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
             <option value="error">error</option>
           </select>
         </div>
-        <div class="settings-field">
-          <label>Download OUI database on start</label>
-          <input id="a-oui" type="checkbox" checked>
-        </div>
-        <div class="settings-field" style="flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap">
-          <label style="flex:none">OUI vendor database</label>
-          <button class="btn-test" onclick="updateOuiDb()">⟳ Update now</button>
-          <span id="oui-update-result" class="test-result"></span>
-        </div>
       </div>
+
+      <div class="settings-section-title" style="margin-top:16px">OUI Vendor Database</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">
+        Maps MAC address prefixes to manufacturer names. Source: IEEE standards registry.
+      </p>
+      <div class="settings-row single">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input id="a-oui" type="checkbox" checked>
+          Download automatically on service start
+        </label>
+      </div>
+      <div class="settings-test-row" style="margin-top:8px">
+        <button class="btn-test" onclick="updateOuiDb()">⟳ Update now</button>
+        <span id="oui-update-result" class="test-result"></span>
+      </div>
+
+      <div class="settings-section-title" style="margin-top:16px">API Secret</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">
+        Protects Settings from other LAN users. Set <code style="font-size:11px">app.secret</code> in <code style="font-size:11px">config.yaml</code> to enable.
+      </p>
       <div class="settings-row single">
         <div class="settings-field">
-          <label>API Secret <span style="color:var(--text-muted);font-weight:400">(optional — protects Settings from other LAN users; set <code style="font-size:11px">app.secret</code> in config.yaml to enable)</span></label>
           <input id="a-secret" type="password" placeholder="leave blank if not configured" autocomplete="new-password">
         </div>
       </div>
@@ -2452,7 +2462,7 @@ async function updateOuiDb() {
     const d = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(d.detail || 'HTTP ' + resp.status);
     resultEl.className = 'test-result ok';
-    resultEl.textContent = `✓ Updated (${d.entries?.toLocaleString()} entries)`;
+    resultEl.textContent = '✓ ' + (d.message || 'Updated');
   } catch (e) {
     resultEl.className = 'test-result err';
     resultEl.textContent = '✗ ' + e.message;

@@ -1,10 +1,12 @@
 """OUI MAC address vendor lookup against a local JSON database."""
+import csv
+import io
 import json
 import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import requests
 import urllib3
@@ -14,7 +16,11 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 logger = logging.getLogger(__name__)
 
 OUI_PATH = Path("/opt/gwless/oui.json")
-OUI_DOWNLOAD_URL = "https://maclookup.app/downloads/json-database/mac-oui"
+
+# Primary: IEEE standards body — always available, no auth required
+_IEEE_CSV_URL = "https://standards-oui.ieee.org/oui/oui.csv"
+# Fallback: maclookup.app JSON
+_MACLOOKUP_URL = "https://maclookup.app/downloads/json-database/mac-oui"
 
 _oui_db: Optional[dict] = None
 _oui_loaded_at: float = 0.0
@@ -25,22 +31,24 @@ def _load_db() -> dict:
     if _oui_db is not None:
         return _oui_db
 
-    # Try local path first, then fallback to cwd
     candidates = [OUI_PATH, Path("oui.json")]
     for path in candidates:
         if path.exists():
             try:
                 with open(path) as f:
                     raw = json.load(f)
-                # Support both list-of-dicts and dict formats
                 if isinstance(raw, list):
                     _oui_db = {
-                        entry.get("macPrefix", "").upper().replace(":", "").replace("-", "").replace(".", ""): entry.get("vendorName", "Unknown")
+                        entry.get("macPrefix", "").upper()
+                        .replace(":", "").replace("-", "").replace(".", ""): entry.get("vendorName", "Unknown")
                         for entry in raw
                         if entry.get("macPrefix")
                     }
                 elif isinstance(raw, dict):
-                    _oui_db = {k.upper().replace(":", "").replace("-", "").replace(".", ""): v for k, v in raw.items()}
+                    _oui_db = {
+                        k.upper().replace(":", "").replace("-", "").replace(".", ""): v
+                        for k, v in raw.items()
+                    }
                 else:
                     _oui_db = {}
                 _oui_loaded_at = time.time()
@@ -54,38 +62,72 @@ def _load_db() -> dict:
     return _oui_db
 
 
-def download_oui_db() -> bool:
-    """Download OUI database from maclookup.app. Returns True on success."""
-    try:
-        logger.info("Downloading OUI database from %s", OUI_DOWNLOAD_URL)
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; gwless/1.0)",
-            "Accept": "application/json, */*",
+def _download_ieee_csv() -> dict:
+    """Download OUI data from IEEE standards-oui.ieee.org (CSV format)."""
+    logger.info("Downloading OUI database from IEEE: %s", _IEEE_CSV_URL)
+    resp = requests.get(_IEEE_CSV_URL, timeout=60, verify=True,
+                        headers={"User-Agent": "gwless/1.0"})
+    resp.raise_for_status()
+    # CSV columns: Registry,Assignment,Organization Name,Organization Address
+    reader = csv.DictReader(io.StringIO(resp.text))
+    db = {}
+    for row in reader:
+        prefix = row.get("Assignment", "").strip().upper()
+        name = row.get("Organization Name", "").strip()
+        if prefix and name:
+            db[prefix] = name
+    if not db:
+        raise ValueError("IEEE CSV parsed to empty database")
+    return db
+
+
+def _download_maclookup_json() -> dict:
+    """Download OUI data from maclookup.app (JSON format, fallback)."""
+    logger.info("Downloading OUI database from maclookup.app: %s", _MACLOOKUP_URL)
+    resp = requests.get(_MACLOOKUP_URL, timeout=60, verify=False,
+                        headers={"User-Agent": "Mozilla/5.0 (compatible; gwless/1.0)",
+                                 "Accept": "application/json, */*"})
+    resp.raise_for_status()
+    data = resp.json()  # raises ValueError if not JSON
+    if not data:
+        raise ValueError("maclookup.app returned empty database")
+    # Normalise list-of-dicts or plain dict
+    if isinstance(data, list):
+        db = {
+            entry.get("macPrefix", "").upper()
+            .replace(":", "").replace("-", "").replace(".", ""): entry.get("vendorName", "Unknown")
+            for entry in data if entry.get("macPrefix")
         }
-        resp = requests.get(OUI_DOWNLOAD_URL, timeout=60, verify=False, headers=headers)
-        resp.raise_for_status()
-        # Validate JSON before writing to disk
+    else:
+        db = {k.upper().replace(":", "").replace("-", "").replace(".", ""): v for k, v in data.items()}
+    if not db:
+        raise ValueError("maclookup.app JSON produced empty lookup table")
+    return db
+
+
+def download_oui_db() -> Tuple[bool, str]:
+    """Download OUI database, trying IEEE CSV first then maclookup.app.
+
+    Returns (success, message).
+    """
+    last_err = ""
+    for name, fn in [("IEEE", _download_ieee_csv), ("maclookup.app", _download_maclookup_json)]:
         try:
-            data = resp.json()
-        except Exception:
-            raise ValueError(
-                f"Response is not valid JSON (content-type: {resp.headers.get('content-type', '?')}, "
-                f"first 200 chars: {resp.text[:200]!r})"
-            )
-        if not data:
-            raise ValueError("Downloaded OUI database is empty")
-        os.makedirs(OUI_PATH.parent, exist_ok=True)
-        with open(OUI_PATH, "wb") as f:
-            f.write(resp.content)
-        logger.info("OUI database saved to %s (%d bytes)", OUI_PATH, len(resp.content))
-        # Reload
-        global _oui_db
-        _oui_db = None
-        _load_db()
-        return True
-    except Exception as e:
-        logger.error("Failed to download OUI database: %s", e)
-        return False
+            db = fn()
+            os.makedirs(OUI_PATH.parent, exist_ok=True)
+            with open(OUI_PATH, "w") as f:
+                json.dump(db, f)
+            logger.info("OUI database saved to %s (%d entries, source: %s)", OUI_PATH, len(db), name)
+            global _oui_db
+            _oui_db = None
+            _load_db()
+            return True, f"{len(db):,} entries (source: {name})"
+        except Exception as e:
+            last_err = f"{name}: {e}"
+            logger.warning("OUI download failed from %s: %s", name, e)
+
+    logger.error("All OUI sources failed. Last error: %s", last_err)
+    return False, last_err
 
 
 def ensure_oui_db() -> None:
@@ -101,9 +143,7 @@ def lookup(mac: str) -> str:
     db = _load_db()
     if not db:
         return "Unknown"
-    # Normalize: remove separators, uppercase, take first 6 chars (OUI prefix)
     normalized = mac.upper().replace(":", "").replace("-", "").replace(".", "")
     if len(normalized) < 6:
         return "Unknown"
-    prefix = normalized[:6]
-    return db.get(prefix, "Unknown")
+    return db.get(normalized[:6], "Unknown")

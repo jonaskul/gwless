@@ -437,13 +437,12 @@ async def force_refresh():
 
 @app.post("/api/oui/update", dependencies=[Depends(_require_secret)])
 async def oui_update():
-    """Re-download OUI database from maclookup.app."""
+    """Re-download OUI database, trying IEEE CSV then maclookup.app."""
     loop = asyncio.get_event_loop()
-    ok = await loop.run_in_executor(_test_executor, download_oui_db)
+    ok, msg = await loop.run_in_executor(_test_executor, download_oui_db)
     if not ok:
-        raise HTTPException(500, "OUI download failed — check service logs for details")
-    from .oui import _oui_db
-    return {"status": "ok", "entries": len(_oui_db) if _oui_db else 0}
+        raise HTTPException(500, msg)
+    return {"status": "ok", "message": msg}
 
 
 @app.get("/api/syslog/status")
