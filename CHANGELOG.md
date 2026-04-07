@@ -1,3 +1,7 @@
+## v0.2.7 — 2026-04-07
+
+- fix: use s.lease_type instead of c.lease_type for Make static condition
+
 ## v0.2.6 — 2026-04-07
 
 - fix: resolve scope_name for syslog/dynamic leases from server list
