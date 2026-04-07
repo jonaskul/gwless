@@ -1,3 +1,7 @@
+## v0.1.15 — 2026-04-07
+
+- fix: backup config before update + remove config.yaml.example as runtime fallback
+
 ## v0.1.14 — 2026-04-07
 
 - fix: remove systemctl reboot from update.sh — log error instead + syntax check before restart
