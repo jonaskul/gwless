@@ -1372,7 +1372,7 @@ function sourceToIcon(c) {
 }
 
 function sourceLabel(src) {
-  return { both: 'Matched (both sources)', sophos_only: 'Sophos DHCP only', unifi_only: 'UniFi only' }[src] || src;
+  return { both: 'Matched (both sources)', sophos_only: 'Sophos DHCP only', unifi_only: 'UniFi only' }[src] || esc(src);
 }
 
 function connectionLabel(c) {
@@ -1708,7 +1708,7 @@ function _renderPanelHistory(container, data) {
     for (const e of data.events) {
       html += `<div class="event-item">
         <span class="event-ts">${_fmtTs(e.ts)}</span>
-        <span class="event-tag event-${e.event}">${_EVENT_LABEL[e.event] || e.event}</span>
+        <span class="event-tag event-${esc(e.event)}">${_EVENT_LABEL[e.event] || esc(e.event)}</span>
         <span class="event-detail">${esc(e.detail || '')}</span>
       </div>`;
     }
@@ -2038,7 +2038,6 @@ function closeSettings() {
 
 function _renderChangelog(text) {
   if (!text) return '<em>(no changelog available)</em>';
-  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   let html = '';
   for (const line of text.split('\n')) {
     const h2 = line.match(/^## (.+)/);

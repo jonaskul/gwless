@@ -294,6 +294,19 @@ init_db()
 # No CORS middleware — frontend is served from the same origin (StaticFiles mount).
 # The browser's default same-origin policy protects all API endpoints.
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
+app.add_middleware(_SecurityHeadersMiddleware)
+
 _VALID_SOURCE = {"sophos_only", "unifi_only", "both"}
 _VALID_STATUS = {"online", "offline"}
 
