@@ -274,3 +274,7 @@ python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 | 📶 | UniFi wireless client |
 | 🔌 | UniFi wired client |
 | 🔥 | Sophos DHCP lease only — no UniFi data |
+
+---
+
+*Built with [Claude Code](https://claude.ai/code)*
