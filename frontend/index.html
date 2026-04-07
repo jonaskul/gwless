@@ -1904,6 +1904,11 @@ function startCountdown() {
   if (state.countdownTimer) clearInterval(state.countdownTimer);
   if (state.refreshTimer)   clearTimeout(state.refreshTimer);
 
+  if (document.hidden) {
+    document.getElementById('countdown').textContent = '—';
+    return;
+  }
+
   state.countdownTimer = setInterval(() => {
     state.countdownSec -= 1;
     document.getElementById('countdown').textContent = state.countdownSec + 's';
@@ -2678,6 +2683,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Settings button
   document.getElementById('settings-btn').addEventListener('click', openSettings);
   document.getElementById('signout-btn').addEventListener('click', logout);
+
+  // Pause refresh when tab is hidden, resume when visible again
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state.countdownTimer) clearInterval(state.countdownTimer);
+      state.countdownTimer = null;
+      document.getElementById('countdown').textContent = '—';
+    } else {
+      fetchClients().then(startCountdown);
+    }
+  });
 
   // Events button
   document.getElementById('events-btn').addEventListener('click', openEvents);
