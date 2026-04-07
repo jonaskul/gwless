@@ -1,3 +1,7 @@
+## v0.1.18 — 2026-04-07
+
+- chore: deduplicate v0.1.17 changelog entry
+
 ## v0.1.17 — 2026-04-07
 
 - fix: duplicate `const url` in downloadBackup causing SyntaxError — entire script failed to parse, leaving all buttons unresponsive after updates since v0.1.13
