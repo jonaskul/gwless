@@ -1,3 +1,7 @@
+## v0.2.10 — 2026-04-07
+
+- fix: send complete DHCPServer config when creating static reservation
+
 ## v0.2.9 — 2026-04-07
 
 - feat: restart service button in App settings tab
