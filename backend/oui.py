@@ -58,8 +58,22 @@ def download_oui_db() -> bool:
     """Download OUI database from maclookup.app. Returns True on success."""
     try:
         logger.info("Downloading OUI database from %s", OUI_DOWNLOAD_URL)
-        resp = requests.get(OUI_DOWNLOAD_URL, timeout=60, verify=False)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; gwless/1.0)",
+            "Accept": "application/json, */*",
+        }
+        resp = requests.get(OUI_DOWNLOAD_URL, timeout=60, verify=False, headers=headers)
         resp.raise_for_status()
+        # Validate JSON before writing to disk
+        try:
+            data = resp.json()
+        except Exception:
+            raise ValueError(
+                f"Response is not valid JSON (content-type: {resp.headers.get('content-type', '?')}, "
+                f"first 200 chars: {resp.text[:200]!r})"
+            )
+        if not data:
+            raise ValueError("Downloaded OUI database is empty")
         os.makedirs(OUI_PATH.parent, exist_ok=True)
         with open(OUI_PATH, "wb") as f:
             f.write(resp.content)

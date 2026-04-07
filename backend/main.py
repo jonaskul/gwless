@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from .cache import TTLCache
 from .history import init_db, record_seen, get_device, get_recent_events
 from .merger import merge_clients, normalize_mac
-from .oui import lookup as oui_lookup, ensure_oui_db
+from .oui import lookup as oui_lookup, ensure_oui_db, download_oui_db
 from .syslog_server import SyslogReceiver
 
 logger = logging.getLogger(__name__)
@@ -433,6 +433,17 @@ async def force_refresh():
     _cache_sophos_cfg.invalidate()
     _cache_unifi.invalidate()
     return {"status": "caches_invalidated"}
+
+
+@app.post("/api/oui/update", dependencies=[Depends(_require_secret)])
+async def oui_update():
+    """Re-download OUI database from maclookup.app."""
+    loop = asyncio.get_event_loop()
+    ok = await loop.run_in_executor(_test_executor, download_oui_db)
+    if not ok:
+        raise HTTPException(500, "OUI download failed — check service logs for details")
+    from .oui import _oui_db
+    return {"status": "ok", "entries": len(_oui_db) if _oui_db else 0}
 
 
 @app.get("/api/syslog/status")

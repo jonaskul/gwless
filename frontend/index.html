@@ -1078,6 +1078,11 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
           <label>Download OUI database on start</label>
           <input id="a-oui" type="checkbox" checked>
         </div>
+        <div class="settings-field" style="flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap">
+          <label style="flex:none">OUI vendor database</label>
+          <button class="btn-test" onclick="updateOuiDb()">⟳ Update now</button>
+          <span id="oui-update-result" class="test-result"></span>
+        </div>
       </div>
       <div class="settings-row single">
         <div class="settings-field">
@@ -2429,6 +2434,25 @@ async function restoreBackup() {
     resultEl.className = 'test-result ok';
     resultEl.textContent = '✓ Restored: ' + d.restored.join(', ');
     setTimeout(() => { closeSettings(); openSettings(); }, 900);
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
+  }
+}
+
+async function updateOuiDb() {
+  const resultEl = document.getElementById('oui-update-result');
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Downloading…';
+  try {
+    const resp = await fetch('/api/oui/update', {
+      method: 'POST',
+      headers: _getSecretHeaders(),
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.detail || 'HTTP ' + resp.status);
+    resultEl.className = 'test-result ok';
+    resultEl.textContent = `✓ Updated (${d.entries?.toLocaleString()} entries)`;
   } catch (e) {
     resultEl.className = 'test-result err';
     resultEl.textContent = '✗ ' + e.message;
