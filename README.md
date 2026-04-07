@@ -12,7 +12,7 @@ Merges DHCP lease data from Sophos and client data from UniFi into one unified, 
 - Unified client table — merges Sophos DHCP leases with UniFi data via MAC (IP fallback)
 - Source tagging: `both`, `sophos_only`, `unifi_only`
 - Live status — green = active in UniFi, grey = lease-only
-- Slide-over detail panel with full Sophos + UniFi data, one-click copy, and history
+- Detail popover at mouse cursor — full Sophos + UniFi data, one-click copy, and history
 - Sortable columns, full-text search (hostname / IP / MAC / vendor)
 - Multi-select filters: VLAN, source, status
 - Auto-refresh every 30 s with visible countdown
@@ -32,8 +32,10 @@ Merges DHCP lease data from Sophos and client data from UniFi into one unified, 
 **Management**
 - In-app update — check, preview changelog, one-click apply with live output
 - In-app OS update (`apt upgrade`) streamed live
-- Backup & Restore — download/upload a ZIP of `config.yaml` + `history.db`
-- OUI vendor lookup — local database, auto-downloaded on first start
+- Backup & Restore — download/upload a ZIP of `config.yaml` + `history.db`, with password include/exclude
+- OUI vendor lookup — local database, auto-downloaded on first start (IEEE source, manual update button in settings)
+- Backup & Restore with optional password include/exclude
+- Version number displayed in header
 
 ---
 
@@ -177,6 +179,7 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 | `GET /api/refresh` | Invalidate all caches |
 | `GET /api/backup` | Download backup ZIP (`config.yaml` + `history.db`) |
 | `POST /api/restore` | Restore from backup ZIP |
+| `POST /api/oui/update` | Re-download OUI vendor database |
 | `POST /api/test/sophos-ssh` | Test Sophos SSH |
 | `POST /api/test/sophos-api` | Test Sophos XML API |
 | `POST /api/test/unifi` | Test UniFi connectivity |
@@ -222,8 +225,7 @@ pct exec <CTID> -- sqlite3 /opt/gwless/history.db \
 ```bash
 git clone https://github.com/jonaskul/gwless.git
 cd gwless
-cp config.yaml.example config.yaml
-# Edit config.yaml with your credentials
+cp config.yaml.example config.yaml   # or configure via ⚙ Settings after starting
 pip install -r requirements.txt
 python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 ```
