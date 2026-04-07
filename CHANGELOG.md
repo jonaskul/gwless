@@ -1,3 +1,7 @@
+## v0.1.11 — 2026-04-07
+
+- feat: Apply/Save buttons in settings + include-passwords option in restore
+
 ## v0.1.10 — 2026-04-07
 
 - feat: add ⬡ SVG favicon in accent blue
