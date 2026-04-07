@@ -1,10 +1,6 @@
-## v1.0.1 — 2026-04-07
+## v0.1.0 — 2026-04-07
 
-- chore: release v1.0.0
-
-## v1.0.0 — 2026-04-07
-
-First stable release. Core features complete:
+First minor release. Core features complete:
 - UniFi + Sophos SFOS DHCP data merged into a single network dashboard
 - Real-time DHCP lease tracking via UDP syslog (no SSH required)
 - Persistent DHCP leases across restarts (SQLite)
