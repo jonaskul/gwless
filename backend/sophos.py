@@ -506,6 +506,7 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
         f"</Request>"
     )
 
+    logger.debug("Sophos Set/DHCPServer request: %s", set_payload)
     resp = requests.post(url, data={"reqxml": set_payload}, **post_kwargs)
     resp.raise_for_status()
     doc = xmltodict.parse(resp.text)
