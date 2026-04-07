@@ -1,3 +1,7 @@
+## v0.3.4 — 2026-04-07
+
+- fix: import Body from fastapi for set_device_name endpoint
+
 ## v0.3.3 — 2026-04-07
 
 - feat: custom display name per device
