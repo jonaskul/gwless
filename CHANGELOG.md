@@ -1,3 +1,7 @@
+## v0.1.4 — 2026-04-07
+
+- fix: add python-multipart dep + reboot fallback in update.sh
+
 ## v0.1.3 — 2026-04-07
 
 - feat: Backup & Restore tab in Settings
