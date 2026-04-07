@@ -1,3 +1,7 @@
+## v0.2.29 — 2026-04-07
+
+- docs: expand Manual Setup section for non-Proxmox users
+
 ## v0.2.28 — 2026-04-07
 
 - docs: update README for public release
