@@ -1,3 +1,7 @@
+## v0.2.30 — 2026-04-07
+
+- docs: update syslog setup with correct Sophos field values
+
 ## v0.2.29 — 2026-04-07
 
 - docs: expand Manual Setup section for non-Proxmox users
