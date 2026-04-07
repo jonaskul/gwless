@@ -1,95 +1,39 @@
-# Gwless — DHCP & Network Client Dashboard
+# Gwless — Network Client Dashboard
 
-Single pane of glass for networks using UniFi switching/WiFi with a Sophos XGS gateway — a combination UniFi's own dashboards handle poorly.
+> Single pane of glass for networks running **Sophos XGS (SFOS 22)** + **UniFi Network v10** — a combination UniFi's own dashboards handle poorly.
 
-Aggregates DHCP lease data from **Sophos SFOS 22** and client data from **UniFi Network v10** into one unified, real-time dashboard. Runs as a self-hosted LXC container on Proxmox VE.
+Merges DHCP lease data from Sophos and client data from UniFi into one unified, real-time table. Runs as a lightweight LXC container on Proxmox VE.
 
 ---
 
 ## Features
 
-- **Unified client table** — merges Sophos DHCP leases with UniFi client data via MAC address (IP fallback)
-- **Source tagging** — each client is tagged as `both` (matched), `sophos_only`, or `unifi_only`
-- **Live status** — green dot = active in UniFi, grey dot = lease-only
-- **Slide-over detail panel** — full Sophos + UniFi data per client with one-click copy, plus history
-- **Device history** — SQLite-backed first/last seen, IP changes, hostname changes, and new device events
-- **Events feed** — global event log accessible from the `⏱` button in the header
-- **VLAN / source / status filtering** + full-text search across hostname, IP, MAC, vendor
-- **Sortable columns** — click any column header
-- **Auto-refresh** every 30s with visible countdown
-- **Stale data warnings** — amber/red banners when backend sources go stale
-- **OUI vendor lookup** — local JSON database, auto-downloaded on first start
-- **DHCP scope overview** — `/api/scopes` shows used/total per scope
-- **Light/dark mode** — `◑` toggle in header, preference saved across sessions
-- **Live connection log** — test buttons stream step-by-step output in real time
-- **In-app update** — check for updates, preview changelog, one-click update with live progress and auto-reload
-- **API secret** — optional header-based protection for mutating endpoints
-- **Embedded syslog receiver** — optional UDP syslog listener; Sophos sends DHCP events in real time, no SSH admin access required. Leases are persisted to SQLite and survive restarts.
+**Dashboard**
+- Unified client table — merges Sophos DHCP leases with UniFi data via MAC (IP fallback)
+- Source tagging: `both`, `sophos_only`, `unifi_only`
+- Live status — green = active in UniFi, grey = lease-only
+- Slide-over detail panel with full Sophos + UniFi data, one-click copy, and history
+- Sortable columns, full-text search (hostname / IP / MAC / vendor)
+- Multi-select filters: VLAN, source, status
+- Auto-refresh every 30 s with visible countdown
+- Stale-data warnings when backend sources go silent
+- Light/dark mode, 12/24 h clock, EU/US date format
 
----
+**Data sources**
+- Sophos XML API — DHCP server config, static reservations, VLAN IDs
+- Sophos SSH — `/tmp/dhcpd.leases` (optional, requires full-admin)
+- Sophos UDP syslog — real-time DHCP events, no SSH required, SQLite-persisted
+- UniFi Proxy API — live client list, WLAN/port, signal, uptime
 
-## Architecture
+**History & events**
+- SQLite-backed device history — first/last seen, IP/hostname changes
+- Global event feed via `⏱` in the header
 
-```
-Sophos XGS (SFOS 22)                UniFi Network v10
-  SSH → /tmp/dhcpd.leases (optional)   Proxy API /proxy/network/…
-  XML API → DHCPServer config          Cookie-based session auth
-  UDP syslog → DHCP events (optional)
-        │                                      │
-        └──────────────┬───────────────────────┘
-                       │
-                  FastAPI backend
-                  (merger + TTL cache + syslog receiver)
-                       │
-                  SQLite history.db
-                  (devices, events, syslog DHCP leases)
-                       │
-                  Vanilla JS frontend
-                  (single HTML file)
-```
-
----
-
-## Syslog DHCP Events
-
-Gwless includes an optional embedded UDP syslog receiver. When enabled, Sophos SFOS sends DHCP events as syslog datagrams and Gwless builds a live lease table from them — **no SSH admin access required**. Leases are written to SQLite so they survive service restarts.
-
-### Why use syslog instead of SSH?
-
-| | SSH | Syslog |
-|---|---|---|
-| Sophos permission required | Admin with Advanced Shell access | Any admin account (Log Settings access) |
-| Data latency | Poll interval (default 60 s) | Real-time (events arrive within seconds) |
-| Persistence across restarts | Re-polled on startup | SQLite-backed, loaded immediately |
-| Setup complexity | SSH key/password + TOFU | Add syslog server IP in Sophos UI |
-
-When syslog is enabled and has received at least one event, it takes priority over SSH for DHCP lease data. SSH remains as fallback if no syslog events have been received yet.
-
-### Setup
-
-#### 1. Enable in Gwless Settings
-
-Open **⚙ Settings → Sophos tab → Syslog DHCP Events**, tick **Enable syslog receiver**, set the port (default `514`), and save.
-
-> **Port 514 note:** Linux requires root to bind to ports below 1024. The default LXC installer runs as root. If you run Gwless unprivileged, use a port > 1024 (e.g. `5140`) and configure Sophos to send to that port.
-
-#### 2. Configure Sophos SFOS
-
-1. Go to **Logging & Monitoring → Log Settings**
-2. Under **Syslog Servers**, add a new entry:
-   - **IP address**: the Gwless container's IP
-   - **Port**: `514` (or your configured port)
-   - **Protocol**: UDP
-   - **Log format**: Default (BSD syslog)
-3. Under **Log Type and Severity**, ensure **Event** logs are enabled
-4. Confirm that the **DHCP** component is included in event logs
-5. Click **Apply**
-
-Lease events appear in the **Status** field in Settings within seconds of the next DHCP activity. You can trigger it immediately by releasing/renewing a lease on any device.
-
-#### 3. Verify
-
-The Settings status row will change from amber to green (*"Receiving — N lease(s), last event Xs ago"*) once the first DHCP event arrives.
+**Management**
+- In-app update — check, preview changelog, one-click apply with live output
+- In-app OS update (`apt upgrade`) streamed live
+- Backup & Restore — download/upload a ZIP of `config.yaml` + `history.db`
+- OUI vendor lookup — local database, auto-downloaded on first start
 
 ---
 
@@ -99,16 +43,15 @@ The Settings status row will change from amber to green (*"Receiving — N lease
 bash <(curl -fsSL https://raw.githubusercontent.com/jonaskul/gwless/main/install.sh)
 ```
 
-The installer will:
-1. Find the next available CTID
-2. Download Debian 13 template if needed
-3. Create an unprivileged LXC (512 MB RAM, 4 GB disk)
-4. Install Python dependencies
-5. Copy app code and write a blank `config.yaml`
-6. Enable and start the `gwless` systemd service
-7. Configure console auto-login for easy access via `pct console`
+The installer prompts for optional customisation (CT ID, RAM, disk, bridge), then:
 
-**No credentials are needed during install.** Open the dashboard URL printed at the end, click **⚙ Settings**, enter your UniFi and Sophos credentials, and use the **Test** buttons to verify connectivity before saving.
+1. Downloads the Debian 13 template if needed
+2. Creates an unprivileged LXC and configures it
+3. Installs Python dependencies and the `gwless` systemd service
+4. Sets a random root password and enables SSH
+5. Prints the dashboard URL, SSH address, and root password
+
+Open the dashboard URL, click **⚙ Settings**, enter your UniFi and Sophos credentials, and use the **Test** buttons before saving. No credentials are required during install.
 
 ---
 
@@ -116,17 +59,160 @@ The installer will:
 
 ### In-app (recommended)
 
-Open **⚙ Settings → Update tab → Check for update**. This will:
-1. Fetch the latest version and changelog from GitHub
-2. Show what's new and whether a newer version is available
-3. Click **Update to latest** to download the latest code, update dependencies, restart the service, and reload the page automatically
+**⚙ Settings → Update → Check for update** — fetches the latest version and changelog, then lets you apply with one click. `config.yaml`, `oui.json`, and `history.db` are preserved.
 
-`config.yaml`, `oui.json`, and `history.db` are preserved.
-
-### Manual (inside the container)
+### Manual
 
 ```bash
 bash /opt/gwless/update.sh
+```
+
+---
+
+## Syslog DHCP Events
+
+An optional embedded UDP syslog receiver lets Sophos push DHCP events in real time — no SSH admin access required.
+
+| | SSH | Syslog |
+|---|---|---|
+| Permission required | Full admin + Advanced Shell | Any admin (Log Settings access) |
+| Latency | Poll interval (60 s default) | Real-time (seconds) |
+| Survives restarts | Re-polled on startup | SQLite-backed |
+
+When syslog has received at least one event it takes priority over SSH. SSH remains as fallback until then.
+
+### Setup
+
+**1. Enable in Gwless** — ⚙ Settings → Sophos → Syslog DHCP Events → tick *Enable*, set port (default `514`), save.
+
+> Port `514` requires root. The default LXC installer runs as root. For unprivileged setups use port > 1024 (e.g. `5140`).
+
+**2. Configure Sophos SFOS** — Logging & Monitoring → Log Settings → Syslog Servers:
+- IP: Gwless container IP
+- Port: `514` (or your port)
+- Protocol: UDP
+- Log format: Default (BSD syslog)
+
+Ensure **Event** logs are enabled and the **DHCP** component is included. Click Apply.
+
+**3. Verify** — the Settings status row turns green (*"Receiving — N lease(s), last event Xs ago"*) on the first DHCP event. You can trigger one immediately by releasing/renewing a lease on any device.
+
+---
+
+## Security
+
+### API Secret
+
+Mutating endpoints can be protected with a shared secret.
+
+1. Set `app.secret: your-secret` in `config.yaml` and restart
+2. Enter the same value in **⚙ Settings → App → API Secret** — it is stored in `sessionStorage` and sent as an `X-Gwless-Secret` header
+
+Read-only endpoints (`GET /api/clients`, masked `GET /api/config`) remain open.
+
+### SSH Host Key Pinning
+
+On first SSH connection the host key fingerprint is saved to `config.yaml` under `sophos.ssh_host_key` and verified on every subsequent connection. Clear this field to re-trust after a firmware reinstall.
+
+---
+
+## Configuration
+
+All settings can be managed from the **⚙ Settings** panel. Direct file reference:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `sophos.host` | — | Sophos XGS IP or hostname |
+| `sophos.api_port` | `4444` | WebAdmin API port |
+| `sophos.ssh_enabled` | `false` | Enable SSH access (requires full admin) |
+| `sophos.ssh_port` | `22` | SSH port |
+| `sophos.ssh_host_key` | — | SSH host key (auto-populated on first connect) |
+| `unifi.host` | — | UniFi Network Application host |
+| `unifi.port` | `443` | UniFi HTTPS port |
+| `unifi.site` | `default` | UniFi site name |
+| `syslog.enabled` | `false` | Enable embedded UDP syslog receiver |
+| `syslog.port` | `514` | UDP port |
+| `syslog.bind_host` | `0.0.0.0` | Bind address |
+| `app.oui_update_on_start` | `true` | Download OUI database if missing |
+| `app.secret` | — | Optional API secret |
+
+---
+
+## API Reference
+
+### Data
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/clients` | All merged clients — supports `?q=`, `?vlan=`, `?source=`, `?status=` |
+| `GET /api/clients/{mac}` | Full detail for one client |
+| `GET /api/scopes` | DHCP scopes with used/total lease counts |
+| `GET /api/stats` | Summary counts and data freshness |
+| `GET /api/syslog/status` | Syslog receiver status and recent log |
+| `GET /api/version` | Installed version |
+| `GET /health` | Source health: `ok` / `stale` / `error` |
+
+### History
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/history/device/{mac}` | First/last seen + event log for a MAC |
+| `GET /api/history/events` | Recent events across all devices (`?limit=`, max 500) |
+
+### Update
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/update/info` | Installed version + local changelog |
+| `GET /api/update/check` | Compare with GitHub + remote changelog |
+| `POST /api/update/apply` | Run `update.sh`, stream output (SSE) |
+| `POST /api/update/os` | Run `apt upgrade`, stream output (SSE) |
+
+### Configuration *(protected if `app.secret` is set)*
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/config` | Current config (passwords masked) |
+| `POST /api/config` | Save config |
+| `GET /api/refresh` | Invalidate all caches |
+| `GET /api/backup` | Download backup ZIP (`config.yaml` + `history.db`) |
+| `POST /api/restore` | Restore from backup ZIP |
+| `POST /api/test/sophos-ssh` | Test Sophos SSH |
+| `POST /api/test/sophos-api` | Test Sophos XML API |
+| `POST /api/test/unifi` | Test UniFi connectivity |
+| `POST /api/test/sophos-ssh/stream` | Test Sophos SSH — live log (SSE) |
+| `POST /api/test/sophos-api/stream` | Test Sophos XML API — live log (SSE) |
+| `POST /api/test/unifi/stream` | Test UniFi — live log (SSE) |
+
+---
+
+## Persistent Data
+
+Stored in `/opt/gwless/` — never overwritten by updates:
+
+| File | Purpose |
+|------|---------|
+| `config.yaml` | All credentials and settings |
+| `oui.json` | OUI vendor database (~5 MB) |
+| `history.db` | Device history, events, syslog DHCP leases |
+
+---
+
+## Container Management
+
+```bash
+# Restart service
+pct exec <CTID> -- systemctl restart gwless
+
+# Follow logs
+pct exec <CTID> -- journalctl -u gwless -f
+
+# Edit config directly (or use ⚙ Settings in the dashboard)
+pct exec <CTID> -- nano /opt/gwless/config.yaml
+
+# Inspect history database
+pct exec <CTID> -- sqlite3 /opt/gwless/history.db \
+  "SELECT * FROM events ORDER BY ts DESC LIMIT 20;"
 ```
 
 ---
@@ -144,125 +230,14 @@ python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 
 ---
 
-## Configuration
-
-See [`config.yaml.example`](config.yaml.example) for all options. All credentials can be set from the **⚙ Settings** panel in the dashboard without editing files directly.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `sophos.host` | — | Sophos XGS IP or hostname |
-| `sophos.ssh_port` | `22` | SSH port |
-| `sophos.api_port` | `4444` | WebAdmin API port |
-| `sophos.ssh_host_key` | — | SSH host key fingerprint (auto-populated on first connect via TOFU) |
-| `unifi.host` | — | UniFi Network Application host |
-| `unifi.site` | `default` | UniFi site name |
-| `syslog.enabled` | `false` | Enable embedded UDP syslog receiver |
-| `syslog.port` | `514` | UDP port to listen on |
-| `syslog.bind_host` | `0.0.0.0` | Bind address for syslog receiver |
-| `app.oui_update_on_start` | `true` | Download OUI DB if missing |
-| `app.secret` | — | Optional API secret — see [Security](#security) |
-
----
-
-## Security
-
-### API Secret
-
-Sensitive endpoints (`POST /api/config`, test endpoints, `/api/refresh`, `/api/update/apply`) can be protected with a shared secret.
-
-1. Set `app.secret: your-secret` in `config.yaml` and restart the service
-2. Enter the same value in **⚙ Settings → App tab → API Secret** in the browser — it is stored in `sessionStorage` and sent as an `X-Gwless-Secret` header on protected requests
-
-`GET /api/clients`, `GET /api/config` (passwords masked), and read-only endpoints remain accessible without the secret.
-
-### SSH Host Key Pinning (TOFU)
-
-On the first SSH connection to Sophos, the host key fingerprint is saved to `config.yaml` under `sophos.ssh_host_key`. Subsequent connections verify against this fingerprint. If the key changes (e.g. after a firmware reinstall), clear `ssh_host_key` in `config.yaml` to re-trust.
-
----
-
-## Persistent Data
-
-These files are stored in `/opt/gwless/` and are **never overwritten by updates**:
-
-| File | Purpose |
-|------|---------|
-| `config.yaml` | All credentials and settings |
-| `oui.json` | OUI vendor database (~5 MB) |
-| `history.db` | SQLite database — device history, events, and syslog DHCP leases |
-
----
-
-## API Endpoints
-
-### Data
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/clients` | All merged clients. Supports `?q=`, `?vlan=`, `?source=`, `?status=` |
-| `GET /api/clients/{mac}` | Full detail for one client |
-| `GET /api/scopes` | DHCP scopes with used/total lease counts |
-| `GET /api/stats` | Summary counts and data freshness |
-| `GET /api/syslog/status` | Syslog receiver status, lease count, last event timestamp, raw log |
-| `GET /api/version` | Installed version string |
-| `GET /health` | Source health: `ok` / `stale` / `error` |
-
-### History
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/history/device/{mac}` | First/last seen + event log for a MAC address |
-| `GET /api/history/events` | Recent events across all devices. Supports `?limit=` (max 500) |
-
-### Update
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/update/info` | Installed version + local changelog |
-| `GET /api/update/check` | Compare with latest on GitHub + remote changelog |
-| `POST /api/update/apply` | Run `update.sh` and stream output (SSE) |
-
-### Configuration *(protected if `app.secret` is set)*
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/config` | Current config (passwords masked) |
-| `POST /api/config` | Save new config |
-| `GET /api/refresh` | Invalidate all caches |
-| `POST /api/test/sophos-ssh` | Test Sophos SSH (returns JSON) |
-| `POST /api/test/sophos-api` | Test Sophos XML API (returns JSON) |
-| `POST /api/test/unifi` | Test UniFi connectivity (returns JSON) |
-| `POST /api/test/sophos-ssh/stream` | Test Sophos SSH — streams live log (SSE) |
-| `POST /api/test/sophos-api/stream` | Test Sophos XML API — streams live log (SSE) |
-| `POST /api/test/unifi/stream` | Test UniFi — streams live log (SSE) |
-
----
-
-## Container Management
-
-```bash
-# Restart service
-pct exec <CTID> -- systemctl restart gwless
-
-# Follow logs
-pct exec <CTID> -- journalctl -u gwless -f
-
-# Edit config (or use the ⚙ Settings panel in the dashboard)
-pct exec <CTID> -- nano /opt/gwless/config.yaml
-pct exec <CTID> -- systemctl restart gwless
-
-# Inspect history database
-pct exec <CTID> -- sqlite3 /opt/gwless/history.db "SELECT * FROM events ORDER BY ts DESC LIMIT 20;"
-```
-
----
-
 ## Stack
 
-- **Backend**: Python 3 / FastAPI / paramiko / requests / xmltodict / SQLite
-- **Frontend**: Single-file HTML — vanilla JS, no build step
-- **Fonts**: Inter + JetBrains Mono (Google Fonts)
-- **Container**: Debian 13 LXC on Proxmox VE
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3 · FastAPI · paramiko · requests · xmltodict · SQLite |
+| Frontend | Single-file HTML — vanilla JS, no build step |
+| Fonts | Inter + JetBrains Mono |
+| Container | Debian 13 LXC on Proxmox VE |
 
 ---
 
