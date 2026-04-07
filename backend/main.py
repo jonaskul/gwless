@@ -779,8 +779,11 @@ async def backup_download():
 
 
 @app.post("/api/restore", dependencies=[Depends(_require_secret)])
-async def backup_restore(file: UploadFile = File(...)):
-    """Accept a backup ZIP, restore config.yaml and/or history.db from it."""
+async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = False):
+    """Accept a backup ZIP, restore config.yaml and/or history.db from it.
+
+    If skip_passwords=true the current passwords are preserved after restore.
+    """
     data = await file.read()
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
@@ -792,6 +795,14 @@ async def backup_restore(file: UploadFile = File(...)):
         raise HTTPException(400, "Zip does not contain config.yaml or history.db")
 
     if "config.yaml" in names:
+        # Snapshot current passwords before overwriting
+        saved_passwords: dict = {}
+        if skip_passwords:
+            saved_passwords = {
+                ("sophos", "password"):  CONFIG.get("sophos", {}).get("password"),
+                ("unifi",  "password"):  CONFIG.get("unifi",  {}).get("password"),
+                ("app",    "secret"):    CONFIG.get("app",    {}).get("secret"),
+            }
         cfg_path = _config_path()
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
         cfg_path.write_bytes(zf.read("config.yaml"))
@@ -800,8 +811,16 @@ async def backup_restore(file: UploadFile = File(...)):
         with open(cfg_path) as f:
             CONFIG.clear()
             CONFIG.update(yaml.safe_load(f) or {})
+        # Re-apply saved passwords if requested
+        if skip_passwords:
+            for (section, key), value in saved_passwords.items():
+                if value is not None:
+                    CONFIG.setdefault(section, {})[key] = value
+            # Persist back to disk
+            with open(cfg_path, "w") as f:
+                yaml.dump(dict(CONFIG), f, default_flow_style=False, allow_unicode=True)
         _rebuild_caches()
-        logger.info("Config restored from backup")
+        logger.info("Config restored from backup (skip_passwords=%s)", skip_passwords)
 
     if "history.db" in names:
         db_path = Path(__file__).parent.parent / "history.db"

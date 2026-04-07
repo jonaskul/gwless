@@ -720,6 +720,12 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
   transition: opacity 0.15s;
 }
 .btn-save:hover { opacity: 0.85; }
+.btn-apply {
+  background: none;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.btn-apply:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); opacity: 1; }
 .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 .save-result {
   font-size: 12px;
@@ -1131,6 +1137,10 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         Upload a previously downloaded backup ZIP.
         Settings are applied immediately; history requires a service restart to take effect.
       </p>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" id="restore-include-passwords">
+        Include passwords from backup
+      </label>
       <div class="settings-test-row" style="flex-wrap:wrap;gap:8px">
         <input type="file" id="restore-file" accept=".zip" style="font-size:12px;color:var(--text);flex:1;min-width:0">
         <button class="btn-test" onclick="restoreBackup()">⬆ Restore</button>
@@ -1142,6 +1152,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       <span id="gwless-version" style="font-size:11px;color:var(--text-muted);margin-right:auto;align-self:center;"></span>
       <span id="save-result" class="save-result"></span>
       <button class="btn-cancel" onclick="closeSettings()">Cancel</button>
+      <button class="btn-save btn-apply" id="btn-apply" onclick="applySettings()">Apply</button>
       <button class="btn-save" id="btn-save" onclick="saveSettings()">Save</button>
     </div>
   </div>
@@ -2162,9 +2173,11 @@ async function testConnection(target) {
   }
 }
 
-async function saveSettings() {
-  const saveBtn = document.getElementById('btn-save');
+async function applySettings() {
+  const applyBtn = document.getElementById('btn-apply');
+  const saveBtn  = document.getElementById('btn-save');
   const saveResult = document.getElementById('save-result');
+  if (applyBtn) applyBtn.disabled = true;
   saveBtn.disabled = true;
   saveResult.className = 'save-result';
   saveResult.textContent = 'Saving…';
@@ -2203,16 +2216,22 @@ async function saveSettings() {
     saveResult.className = 'save-result';
     saveResult.textContent = '✓ Saved';
     document.getElementById('settings-btn').classList.remove('needs-setup');
-    // Invalidate caches so dashboard refreshes with new credentials
     await fetch('/api/refresh', { headers: _getSecretHeaders() });
-    setTimeout(closeSettings, 800);
     fetchClients().then(startCountdown);
+    return true;
   } catch (e) {
     saveResult.className = 'save-result err';
     saveResult.textContent = '✗ ' + e.message;
+    return false;
   } finally {
+    if (applyBtn) applyBtn.disabled = false;
     saveBtn.disabled = false;
   }
+}
+
+async function saveSettings() {
+  const ok = await applySettings();
+  if (ok) setTimeout(closeSettings, 600);
 }
 
 async function runUpdate() {
@@ -2387,9 +2406,11 @@ async function restoreBackup() {
   resultEl.className = 'test-result busy';
   resultEl.textContent = 'Restoring…';
   try {
+    const includePasswords = document.getElementById('restore-include-passwords').checked;
     const fd = new FormData();
     fd.append('file', fileInput.files[0]);
-    const resp = await fetch('/api/restore', {
+    const url = '/api/restore' + (includePasswords ? '' : '?skip_passwords=true');
+    const resp = await fetch(url, {
       method: 'POST',
       headers: _getSecretHeaders(),
       body: fd,
