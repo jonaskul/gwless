@@ -521,6 +521,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 }
 #settings-btn:hover { color: var(--accent); border-color: var(--accent); }
 #settings-btn.needs-setup { color: var(--amber); border-color: var(--amber); animation: pulse-amber 2s ease-in-out infinite; }
+#signout-btn:hover { color: var(--red); border-color: var(--red); }
 @keyframes pulse-amber { 0%,100%{opacity:1} 50%{opacity:0.55} }
 
 /* ── Settings modal ── */
@@ -863,6 +864,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       </div>
       <button id="events-btn" title="Recent events">⏱ Events</button>
       <button id="settings-btn" title="Settings">⚙ Settings</button>
+      <button id="signout-btn" title="Sign out" style="display:none">⎋ Sign out</button>
       <button id="refresh-btn" style="margin-left:auto">↻ <span id="countdown">—</span></button>
     </div>
   </div>
@@ -2562,6 +2564,8 @@ async function checkAuth() {
   try {
     const r = await fetch('/api/auth/status');
     const d = await r.json();
+    const btn = document.getElementById('signout-btn');
+    if (btn) btn.style.display = d.auth_enabled ? '' : 'none';
     if (d.auth_enabled && !d.authenticated) {
       document.getElementById('login-overlay').classList.add('open');
       document.getElementById('login-username').focus();
@@ -2656,6 +2660,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Settings button
   document.getElementById('settings-btn').addEventListener('click', openSettings);
+  document.getElementById('signout-btn').addEventListener('click', logout);
 
   // Events button
   document.getElementById('events-btn').addEventListener('click', openEvents);
