@@ -456,8 +456,6 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     if target is None:
         return {"ok": False, "message": f"DHCP server '{server_name}' not found on Sophos"}
 
-    logger.debug("Sophos DHCPServer raw config for '%s': %s", server_name, target)
-
     # ── Step 2: extract required fields ──────────────────────────────────────
     def _x(val: Any) -> str:
         return xml_escape(str(val)) if val else ""
@@ -568,11 +566,9 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
         f"</Request>"
     )
 
-    logger.debug("Sophos Set/DHCPServer request: %s", set_payload)
     resp = requests.post(url, data={"reqxml": set_payload}, **post_kwargs)
     resp.raise_for_status()
     doc = xmltodict.parse(resp.text)
-    logger.debug("Sophos Set/DHCPServer response: %s", resp.text)
     return _parse_sophos_status(doc)
 
 
@@ -707,7 +703,6 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
     resp = requests.post(url, data={"reqxml": set_payload}, **post_kwargs)
     resp.raise_for_status()
     doc = xmltodict.parse(resp.text)
-    logger.debug("Sophos Remove/DHCPServer response: %s", resp.text)
     return _parse_sophos_status(doc)
 
 
