@@ -394,6 +394,16 @@ def _parse_sophos_status(doc: dict) -> dict:
     return {"ok": True}
 
 
+def _ip_in_range(ip: str, start: str, end: str) -> bool:
+    """Return True if ip is within [start, end] inclusive."""
+    try:
+        import ipaddress
+        return (ipaddress.ip_address(ip) >= ipaddress.ip_address(start) and
+                ipaddress.ip_address(ip) <= ipaddress.ip_address(end))
+    except ValueError:
+        return False
+
+
 def _sanitize_hostname(name: str) -> str:
     """Replace characters invalid in Sophos DHCP hostnames (spaces → hyphens)."""
     return name.replace(" ", "-") if name else ""
@@ -465,6 +475,17 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     ip_range     = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
     ip_range_raw = ip_range.get("IP", "") if isinstance(ip_range, dict) else ""
     range_start, range_end = _split_ip_range(ip_range_raw)
+
+    # Validate: static IP must not overlap the dynamic range
+    if range_start and range_end and _ip_in_range(ip, range_start, range_end):
+        return {
+            "ok": False,
+            "message": (
+                f"IP {ip} is within the dynamic range ({range_start}–{range_end}). "
+                f"Choose an IP outside this range for a static reservation."
+            ),
+            "dynamic_range": {"start": range_start, "end": range_end},
+        }
 
     # Optional fields — pass back verbatim so Sophos doesn't reject
     conflict    = _x(target.get("ConflictDetection"))

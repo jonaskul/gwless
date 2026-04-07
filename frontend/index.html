@@ -1776,9 +1776,19 @@ function buildPanelContent(c) {
       ${kvRow('Scope',        s.scope_name || s.scope || '—', false)}
       ${kvRow('Lease Start',  s.lease_start || '—', false)}
       ${kvRow('Lease End',    s.lease_end || '—', false)}
-      ${showMakeStatic ? `<div class="panel-action">
-        <button class="make-static-btn" data-mac="${esc(s.mac)}" data-ip="${esc(s.ip)}" data-hostname="${esc(s.hostname||'')}" data-scope="${esc(s.scope_name)}">⚓ Make static</button>
-        <span class="make-static-status"></span>
+      ${showMakeStatic ? `<div class="make-static-form" data-mac="${esc(s.mac)}" data-scope="${esc(s.scope_name)}">
+        <div class="panel-action">
+          <button class="make-static-btn">⚓ Make static</button>
+          <span class="make-static-status"></span>
+        </div>
+        <div class="make-static-fields" style="display:none;margin-top:8px;display:none">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <input class="make-static-ip" type="text" value="${esc(s.ip||'')}" placeholder="IP address" style="width:130px;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">
+            <input class="make-static-hn" type="text" value="${esc(s.hostname||'')}" placeholder="Hostname" style="width:110px;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">
+            <button class="make-static-confirm" style="font-size:12px;padding:3px 10px;border:1px solid var(--accent);border-radius:4px;background:none;color:var(--accent);cursor:pointer">Reserve</button>
+            <button class="make-static-cancel" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer">Cancel</button>
+          </div>
+        </div>
       </div>` : ''}
       ${showRemoveStatic ? `<div class="panel-action">
         <button class="remove-static-btn" data-mac="${esc(s.mac)}" data-scope="${esc(s.scope_name)}">✕ Remove static</button>
@@ -2031,15 +2041,34 @@ function initEvents() {
     }
   }, true);
 
-  // "Make static" button inside popover (delegated)
-  document.getElementById('popover-content').addEventListener('click', async e => {
+  // "Make static" — click button to expand form
+  document.getElementById('popover-content').addEventListener('click', e => {
     const btn = e.target.closest('.make-static-btn');
     if (!btn) return;
-    const { mac, ip, hostname, scope } = btn.dataset;
-    const statusEl = btn.closest('.panel-action').querySelector('.make-static-status');
-    btn.disabled = true;
-    statusEl.textContent = 'Saving…';
+    const form = btn.closest('.make-static-form');
+    const fields = form.querySelector('.make-static-fields');
+    fields.style.display = fields.style.display === 'none' ? '' : 'none';
+  });
+
+  // "Make static" — cancel
+  document.getElementById('popover-content').addEventListener('click', e => {
+    if (!e.target.closest('.make-static-cancel')) return;
+    const fields = e.target.closest('.make-static-fields');
+    fields.style.display = 'none';
+  });
+
+  // "Make static" — confirm reservation
+  document.getElementById('popover-content').addEventListener('click', async e => {
+    const confirmBtn = e.target.closest('.make-static-confirm');
+    if (!confirmBtn) return;
+    const form = confirmBtn.closest('.make-static-form');
+    const { mac, scope } = form.dataset;
+    const ip       = form.querySelector('.make-static-ip').value.trim();
+    const hostname = form.querySelector('.make-static-hn').value.trim();
+    const statusEl = form.querySelector('.make-static-status');
+    confirmBtn.disabled = true;
     statusEl.style.color = 'var(--text-muted)';
+    statusEl.textContent = 'Saving…';
     try {
       const res = await fetch('/api/sophos/dhcp/reserve', {
         method: 'POST',
@@ -2050,16 +2079,17 @@ function initEvents() {
       if (data.ok) {
         statusEl.style.color = 'var(--green)';
         statusEl.textContent = '✓ Reserved';
-        btn.remove();
+        form.querySelector('.make-static-btn').remove();
+        form.querySelector('.make-static-fields').remove();
       } else {
         statusEl.style.color = 'var(--red)';
         statusEl.textContent = data.message || 'Failed';
-        btn.disabled = false;
+        confirmBtn.disabled = false;
       }
     } catch {
       statusEl.style.color = 'var(--red)';
       statusEl.textContent = 'Network error';
-      btn.disabled = false;
+      confirmBtn.disabled = false;
     }
   });
 
