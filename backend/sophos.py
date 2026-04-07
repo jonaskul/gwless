@@ -373,57 +373,144 @@ def fetch_dhcp_server_config(config: dict) -> dict:
     return {"servers": servers, "static_entries": static_entries}
 
 
+def _parse_sophos_status(doc: dict) -> dict:
+    """Extract ok/message from a Sophos Set response dict."""
+    status = doc.get("Response", {}).get("DHCPServer", {})
+    if isinstance(status, dict):
+        code = status.get("Status", {})
+        if isinstance(code, dict):
+            code_val = str(code.get("@code", ""))
+            msg = code.get("#text", "")
+            if code_val == "200":
+                return {"ok": True}
+            return {"ok": False, "message": msg or f"Sophos returned code {code_val}"}
+    return {"ok": True}
+
+
 def create_static_reservation(config: dict, server_name: str, mac: str, ip: str, hostname: str) -> dict:
     """
     Add a static DHCP reservation to the named DHCP server via Sophos XML API.
+
+    Sophos <Set> requires the complete DHCPServer object (not a partial update),
+    so we first <Get> the current config, append the new static lease, then
+    send the full object back with <Set>.
+
     Returns {"ok": True} or {"ok": False, "message": "..."}.
     """
     host = config.get("host", "")
     if not host:
         raise ValueError("Sophos host is not configured.")
     url = _api_url(config)
+    verify = config.get("verify_ssl", False)
+    post_kwargs = dict(
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        verify=verify,
+        timeout=15,
+    )
     username = xml_escape(config.get("username", ""))
     password = xml_escape(config.get("api_password") or config.get("password", ""))
-    sname = xml_escape(server_name)
-    smac  = xml_escape(mac)
-    sip   = xml_escape(ip)
-    shost = xml_escape(hostname)
-    payload = (
+
+    # ── Step 1: fetch current DHCPServer config ──────────────────────────────
+    get_payload = _build_payload(config, "DHCPServer")
+    resp = requests.post(url, data={"reqxml": get_payload}, **post_kwargs)
+    resp.raise_for_status()
+    get_doc = xmltodict.parse(resp.text)
+    servers_raw = get_doc.get("Response", {}).get("DHCPServer", {})
+    server_list = servers_raw if isinstance(servers_raw, list) else [servers_raw]
+
+    target = None
+    for srv in server_list:
+        if srv and srv.get("Name") == server_name:
+            target = srv
+            break
+    if target is None:
+        return {"ok": False, "message": f"DHCP server '{server_name}' not found on Sophos"}
+
+    # ── Step 2: extract required fields ──────────────────────────────────────
+    def _x(val: Any) -> str:
+        return xml_escape(str(val)) if val else ""
+
+    iface        = _x(target.get("Interface"))
+    subnet       = _x(target.get("SubnetMask") or target.get("Network"))
+    gateway      = _x(target.get("Gateway") or target.get("GatewayIP"))
+    dns1         = _x(target.get("PrimaryDNSServer") or target.get("DNS1"))
+    dns2         = _x(target.get("SecondaryDNSServer") or target.get("DNS2"))
+    default_lt   = _x(target.get("DefaultLeaseTime") or "86400")
+    max_lt       = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
+    sname        = _x(server_name)
+
+    ip_range = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
+    range_start = _x(ip_range.get("StartIP") or ip_range.get("From")) if isinstance(ip_range, dict) else ""
+    range_end   = _x(ip_range.get("EndIP")   or ip_range.get("To"))   if isinstance(ip_range, dict) else ""
+
+    # ── Step 3: collect existing static leases (preserve them) ───────────────
+    existing_macs: set[str] = set()
+    hosts_xml = ""
+    for res in _extract_reservations(target):
+        if not res:
+            continue
+        h_mac  = _x(res.get("MACAddress") or res.get("MAC"))
+        h_ip   = _x(res.get("IPAddress")  or res.get("IP"))
+        h_name = _x(res.get("HostName")   or res.get("Name") or res.get("Hostname"))
+        if h_mac:
+            existing_macs.add(h_mac.lower())
+            hosts_xml += (
+                f"<Host>"
+                f"<MACAddress>{h_mac}</MACAddress>"
+                f"<IPAddress>{h_ip}</IPAddress>"
+                f"<HostName>{h_name}</HostName>"
+                f"</Host>"
+            )
+
+    norm_mac = mac.lower()
+    if norm_mac in existing_macs:
+        return {"ok": False, "message": f"A static reservation for {mac} already exists on this server"}
+
+    # Append the new reservation
+    hosts_xml += (
+        f"<Host>"
+        f"<MACAddress>{_x(mac)}</MACAddress>"
+        f"<IPAddress>{_x(ip)}</IPAddress>"
+        f"<HostName>{_x(hostname)}</HostName>"
+        f"</Host>"
+    )
+
+    # ── Step 4: build optional XML fragments ─────────────────────────────────
+    range_xml = (
+        f"<IPLease><StartIP>{range_start}</StartIP><EndIP>{range_end}</EndIP></IPLease>"
+        if range_start and range_end else ""
+    )
+    dns_xml = ""
+    if dns1:
+        dns_xml += f"<PrimaryDNSServer>{dns1}</PrimaryDNSServer>"
+    if dns2:
+        dns_xml += f"<SecondaryDNSServer>{dns2}</SecondaryDNSServer>"
+
+    # ── Step 5: send complete Set payload ─────────────────────────────────────
+    set_payload = (
         f"<Request>"
         f"<Login><Username>{username}</Username><Password>{password}</Password></Login>"
         f"<Set>"
         f"<DHCPServer>"
         f"<Name>{sname}</Name>"
-        f"<StaticLease><Host>"
-        f"<MACAddress>{smac}</MACAddress>"
-        f"<IPAddress>{sip}</IPAddress>"
-        f"<HostName>{shost}</HostName>"
-        f"</Host></StaticLease>"
+        f"<Interface>{iface}</Interface>"
+        f"<Gateway>{gateway}</Gateway>"
+        f"<SubnetMask>{subnet}</SubnetMask>"
+        f"{range_xml}"
+        f"{dns_xml}"
+        f"<DefaultLeaseTime>{default_lt}</DefaultLeaseTime>"
+        f"<MaxLeaseTime>{max_lt}</MaxLeaseTime>"
+        f"<StaticLease>{hosts_xml}</StaticLease>"
         f"</DHCPServer>"
         f"</Set>"
         f"</Request>"
     )
-    resp = requests.post(
-        url,
-        data={"reqxml": payload},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        verify=config.get("verify_ssl", False),
-        timeout=15,
-    )
+
+    resp = requests.post(url, data={"reqxml": set_payload}, **post_kwargs)
     resp.raise_for_status()
     doc = xmltodict.parse(resp.text)
     logger.debug("Sophos Set/DHCPServer response: %s", resp.text)
-    # Sophos returns <Response><DHCPServer><Status code="200">...
-    status = doc.get("Response", {}).get("DHCPServer", {})
-    if isinstance(status, dict):
-        code = status.get("Status", {})
-        if isinstance(code, dict):
-            code_val = code.get("@code", "")
-            msg = code.get("#text", "")
-            if str(code_val) == "200":
-                return {"ok": True}
-            return {"ok": False, "message": msg or f"Sophos returned code {code_val}"}
-    return {"ok": True}  # treat unknown successful HTTP as ok
+    return _parse_sophos_status(doc)
 
 
 def diagnose_ssh(config: dict, log_fn=None) -> None:
