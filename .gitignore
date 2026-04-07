@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+config.yaml
+oui.json
+history.db
