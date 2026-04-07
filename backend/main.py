@@ -1015,6 +1015,20 @@ async def history_events(limit: int = Query(100, le=500)):
 
 
 # ---------------------------------------------------------------------------
+# Restart endpoint
+# ---------------------------------------------------------------------------
+
+@app.post("/api/restart", dependencies=[Depends(_require_secret)])
+async def restart_service():
+    """Schedule a service restart and return immediately."""
+    async def _restart():
+        await asyncio.sleep(0.3)
+        subprocess.Popen(["systemctl", "restart", "gwless"])
+    asyncio.create_task(_restart())
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # Update endpoint — downloads latest code from GitHub, restarts service
 # ---------------------------------------------------------------------------
 

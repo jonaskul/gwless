@@ -1166,6 +1166,11 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
             <option value="error">error</option>
           </select>
         </div>
+        <div class="settings-field" style="max-width:180px;align-self:flex-end">
+          <label>&nbsp;</label>
+          <button id="restart-service-btn" class="btn-secondary" onclick="restartService()">↺ Restart service</button>
+          <div id="restart-service-status" style="font-size:12px;color:var(--text-muted);margin-top:4px;min-height:16px"></div>
+        </div>
       </div>
 
       <div class="settings-section-title" style="margin-top:16px">OUI Vendor Database</div>
@@ -2612,6 +2617,36 @@ async function restoreBackup() {
     resultEl.className = 'test-result err';
     resultEl.textContent = '✗ ' + e.message;
   }
+}
+
+async function restartService() {
+  const btn = document.getElementById('restart-service-btn');
+  const statusEl = document.getElementById('restart-service-status');
+  btn.disabled = true;
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = 'Restarting…';
+  try {
+    await fetch('/api/restart', { method: 'POST', headers: _getSecretHeaders() });
+  } catch { /* expected — connection drops on restart */ }
+  // Poll until the service comes back
+  const start = Date.now();
+  const poll = async () => {
+    if (Date.now() - start > 30000) {
+      statusEl.style.color = 'var(--red)';
+      statusEl.textContent = 'Timed out';
+      btn.disabled = false;
+      return;
+    }
+    try {
+      await fetch('/api/auth/status');
+      statusEl.style.color = 'var(--green)';
+      statusEl.textContent = '✓ Back online';
+      btn.disabled = false;
+    } catch {
+      setTimeout(poll, 1500);
+    }
+  };
+  setTimeout(poll, 2000);
 }
 
 async function updateOuiDb() {
