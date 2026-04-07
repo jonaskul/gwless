@@ -1,3 +1,18 @@
+## v1.0.0 — 2026-04-07
+
+First stable release. Core features complete:
+- UniFi + Sophos SFOS DHCP data merged into a single network dashboard
+- Real-time DHCP lease tracking via UDP syslog (no SSH required)
+- Persistent DHCP leases across restarts (SQLite)
+- VLAN ID extraction from Sophos interface config
+- Multi-select filter dropdowns (VLAN, source, status)
+- Tabbed Settings (General, UniFi, Sophos, App, Update)
+- SSH opt-in with full-admin warning; API-only mode default
+- In-app update check against GitHub with remote changelog preview
+- Device history tracking (first seen, last seen, IP/hostname changes)
+- Light/dark theme, 12/24h clock, EU/US date format preferences
+- Security: full HTML escaping of syslog data, no credential leaks in /health
+
 ## v0.0.43 — 2026-04-07
 
 - fix: security hardening — XSS in syslog display, error leak in /health
