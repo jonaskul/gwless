@@ -825,6 +825,66 @@ async def update_apply():
     )
 
 
+@app.post("/api/update/os", dependencies=[Depends(_require_secret)])
+async def update_os():
+    """Run apt-get update + upgrade inside the container and stream output as SSE."""
+
+    async def generate():
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def run():
+            try:
+                env = {"DEBIAN_FRONTEND": "noninteractive", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"}
+                proc = subprocess.Popen(
+                    ["bash", "-c", "apt-get update && apt-get upgrade -y -o Dpkg::Options::='--force-confold'"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=env,
+                )
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line:
+                        loop.call_soon_threadsafe(
+                            queue.put_nowait, {"msg": line, "level": "info"}
+                        )
+                proc.wait()
+                if proc.returncode != 0:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"msg": f"OS update failed (exit code {proc.returncode})", "level": "err", "final": True, "ok": False},
+                    )
+                else:
+                    loop.call_soon_threadsafe(
+                        queue.put_nowait,
+                        {"msg": "OS packages up to date.", "level": "ok", "final": True, "ok": True},
+                    )
+            except Exception as e:
+                loop.call_soon_threadsafe(
+                    queue.put_nowait, {"msg": str(e), "level": "err", "final": True, "ok": False}
+                )
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        async def _run():
+            await loop.run_in_executor(_test_executor, run)
+
+        asyncio.create_task(_run())
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Static frontend — mount LAST so /api/* routes are not shadowed
 # ---------------------------------------------------------------------------

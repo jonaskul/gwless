@@ -1112,6 +1112,16 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         </div>
       </div>
       <div id="log-update" class="live-log" hidden></div>
+
+      <div class="settings-section-title" style="margin-top:20px">OS Packages</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 10px">
+        Runs <code style="font-size:11px">apt-get update &amp;&amp; apt-get upgrade</code> inside the container.
+      </p>
+      <div class="settings-test-row">
+        <button class="btn-test" id="btn-update-os" onclick="runOsUpdate()">Update OS packages</button>
+        <span id="os-update-result" class="test-result"></span>
+      </div>
+      <div id="log-os-update" class="live-log" hidden></div>
     </div>
 
     <div class="settings-footer">
@@ -2191,6 +2201,56 @@ async function runUpdate() {
   } catch (e) {
     resultEl.className = 'test-result err';
     resultEl.textContent = '✗ ' + e.message;
+    btn.disabled = false;
+  }
+}
+
+async function runOsUpdate() {
+  const btn = document.getElementById('btn-update-os');
+  const resultEl = document.getElementById('os-update-result');
+  const logEl = document.getElementById('log-os-update');
+
+  btn.disabled = true;
+  logEl.innerHTML = '';
+  logEl.hidden = false;
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Updating…';
+
+  try {
+    const resp = await fetch('/api/update/os', {
+      method: 'POST',
+      headers: _getSecretHeaders(),
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        const ev = JSON.parse(part.slice(6));
+        const line = document.createElement('div');
+        line.className = 'll-' + (ev.level || 'info');
+        line.textContent = ev.msg;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+        if (ev.final) {
+          resultEl.className = 'test-result ' + (ev.ok ? 'ok' : 'err');
+          resultEl.textContent = (ev.ok ? '✓ ' : '✗ ') + ev.msg;
+        }
+      }
+    }
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
+  } finally {
     btn.disabled = false;
   }
 }
