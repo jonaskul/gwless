@@ -1,3 +1,7 @@
+## v0.2.1 — 2026-04-07
+
+- fix: sign-out button style + version shown immediately after login
+
 ## v0.2.0 — 2026-04-07
 
 - feat: optional login page with session auth (24h httpOnly cookie)
