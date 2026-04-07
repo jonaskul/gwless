@@ -1,3 +1,7 @@
+## v0.1.27 — 2026-04-07
+
+- docs: add login page to README
+
 ## v0.1.26 — 2026-04-07
 
 - feat: optional login page with session auth
