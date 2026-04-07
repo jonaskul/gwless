@@ -15,17 +15,33 @@ logger = logging.getLogger(__name__)
 DB_PATH = Path(__file__).parent.parent / "history.db"
 _lock = threading.Lock()
 _PRUNE_DAYS = 90
+_PRUNE_INTERVAL = 3600  # re-prune at most once per hour during runtime
+_last_prune: float = 0.0
+
+# ---------------------------------------------------------------------------
+# Single persistent connection — avoids per-call open/close overhead.
+# Protected by _lock; check_same_thread=False is safe because we never use
+# the connection outside the lock.
+# ---------------------------------------------------------------------------
+_db: sqlite3.Connection | None = None
 
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    c.row_factory = sqlite3.Row
-    return c
+    global _db
+    if _db is None:
+        _db = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        _db.row_factory = sqlite3.Row
+        # WAL mode: writers don't block readers; better concurrent performance.
+        _db.execute("PRAGMA journal_mode=WAL")
+        _db.execute("PRAGMA synchronous=NORMAL")
+        _db.execute("PRAGMA cache_size=-8000")   # 8 MB page cache
+    return _db
 
 
 def init_db() -> None:
-    """Create tables and prune old events. Safe to call on every startup."""
-    with _lock, _conn() as db:
+    """Create tables, enable WAL, prune old events. Safe to call on every startup."""
+    with _lock:
+        db = _conn()
         db.executescript("""
             CREATE TABLE IF NOT EXISTS devices (
                 mac           TEXT PRIMARY KEY,
@@ -55,9 +71,25 @@ def init_db() -> None:
                 lease_time    INTEGER NOT NULL DEFAULT 86400
             );
         """)
-        cutoff = int(time.time()) - _PRUNE_DAYS * 86400
-        db.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
+        _prune(db)
     logger.info("History DB initialised at %s", DB_PATH)
+
+
+def _prune(db: sqlite3.Connection) -> None:
+    """Delete events older than _PRUNE_DAYS. Caller must hold _lock."""
+    global _last_prune
+    cutoff = int(time.time()) - _PRUNE_DAYS * 86400
+    result = db.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
+    db.commit()
+    if result.rowcount:
+        logger.info("Pruned %d old events from history DB", result.rowcount)
+    _last_prune = time.time()
+
+
+def _maybe_prune(db: sqlite3.Connection) -> None:
+    """Prune once per _PRUNE_INTERVAL during normal operation."""
+    if time.time() - _last_prune > _PRUNE_INTERVAL:
+        _prune(db)
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +99,8 @@ def init_db() -> None:
 def upsert_lease(mac: str, ip: str, hostname: str, starts: str, ends: str,
                  seen_at: float, lease_time: int) -> None:
     """Insert or update a DHCP lease."""
-    with _lock, _conn() as db:
+    with _lock:
+        db = _conn()
         db.execute(
             """INSERT INTO dhcp_leases
                (mac, ip, hostname, starts, ends, binding_state, seen_at, lease_time)
@@ -79,17 +112,21 @@ def upsert_lease(mac: str, ip: str, hostname: str, starts: str, ends: str,
                  binding_state='active'""",
             (mac, ip, hostname, starts, ends, int(seen_at), lease_time),
         )
+        db.commit()
 
 
 def delete_lease(mac: str) -> None:
     """Remove a DHCP lease (on release/expire)."""
-    with _lock, _conn() as db:
+    with _lock:
+        db = _conn()
         db.execute("DELETE FROM dhcp_leases WHERE mac = ?", (mac,))
+        db.commit()
 
 
 def load_leases() -> list[dict]:
     """Load all non-expired leases from DB. Called at startup."""
-    with _conn() as db:
+    with _lock:
+        db = _conn()
         rows = db.execute(
             "SELECT * FROM dhcp_leases WHERE seen_at + lease_time * 1.1 > ?",
             (int(time.time()),),
@@ -99,8 +136,10 @@ def load_leases() -> list[dict]:
 
 def delete_lease_by_ip(ip: str) -> None:
     """Remove a DHCP lease by IP address (for Expire events that lack a MAC)."""
-    with _lock, _conn() as db:
+    with _lock:
+        db = _conn()
         db.execute("DELETE FROM dhcp_leases WHERE ip = ?", (ip,))
+        db.commit()
 
 
 def record_seen(clients: list[dict]) -> None:
@@ -109,7 +148,9 @@ def record_seen(clients: list[dict]) -> None:
     or when IP/hostname changes. Called after each fresh data merge.
     """
     now = int(time.time())
-    with _lock, _conn() as db:
+    with _lock:
+        db = _conn()
+        _maybe_prune(db)
         for c in clients:
             mac = c.get("mac", "").strip()
             if not mac:
@@ -152,11 +193,13 @@ def record_seen(clients: list[dict]) -> None:
                     f"UPDATE devices SET {set_sql} WHERE mac = ?",
                     (*changes.values(), mac),
                 )
+        db.commit()
 
 
 def get_device(mac: str) -> dict:
     """Return device record + recent events for a MAC address."""
-    with _conn() as db:
+    with _lock:
+        db = _conn()
         row = db.execute("SELECT * FROM devices WHERE mac = ?", (mac,)).fetchone()
         events = db.execute(
             "SELECT * FROM events WHERE mac = ? ORDER BY ts DESC LIMIT 50", (mac,)
@@ -169,7 +212,8 @@ def get_device(mac: str) -> dict:
 
 def get_recent_events(limit: int = 100) -> list[dict]:
     """Return the most recent events across all devices."""
-    with _conn() as db:
+    with _lock:
+        db = _conn()
         rows = db.execute(
             "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
         ).fetchall()

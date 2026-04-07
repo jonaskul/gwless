@@ -116,13 +116,18 @@ _unifi_error:  Optional[str] = None
 
 _syslog_receiver: Optional[SyslogReceiver] = None
 
+# Reuse the UniFi client across cache refreshes so the TCP+SSL session and
+# login cookie survive between calls (saves one round-trip per cache miss).
+_unifi_client: Optional[Any] = None
+
 
 def _rebuild_caches() -> None:
     """Recreate caches with updated TTLs after config change."""
-    global _cache_leases, _cache_sophos_cfg, _cache_unifi
+    global _cache_leases, _cache_sophos_cfg, _cache_unifi, _unifi_client
     _cache_leases    = TTLCache(ttl=CONFIG["sophos"].get("poll_interval_leases", 60))
     _cache_sophos_cfg = TTLCache(ttl=CONFIG["sophos"].get("poll_interval_config", 300))
     _cache_unifi     = TTLCache(ttl=CONFIG["unifi"].get("poll_interval", 30))
+    _unifi_client    = None  # force re-auth on next fetch
 
 
 def _start_syslog_if_enabled() -> None:
@@ -213,7 +218,7 @@ def _get_sophos_config() -> dict:
 
 
 def _get_unifi_data() -> dict:
-    global _unifi_error
+    global _unifi_error, _unifi_client
     entry = _cache_unifi.get()
     if entry and not entry.stale:
         return entry.data
@@ -224,15 +229,24 @@ def _get_unifi_data() -> dict:
         if host and not host.startswith("http"):
             host = f"https://{host}:{unifi_cfg.get('port', 443)}"
         unifi_cfg = {**unifi_cfg, "host": host}
-        client = UniFiClient(unifi_cfg)
-        clients = client.fetch_clients()
-        ap_map = client.fetch_ap_map()
+        # Reuse authenticated client; re-create on first call or after config change.
+        if _unifi_client is None:
+            _unifi_client = UniFiClient(unifi_cfg)
+        try:
+            clients = _unifi_client.fetch_clients()
+            ap_map  = _unifi_client.fetch_ap_map()
+        except Exception:
+            # Session may have expired — try once more with a fresh client.
+            _unifi_client = UniFiClient(unifi_cfg)
+            clients = _unifi_client.fetch_clients()
+            ap_map  = _unifi_client.fetch_ap_map()
         data = {"clients": clients, "ap_map": ap_map}
         _cache_unifi.set(data)
         _unifi_error = None
         return data
     except Exception as e:
         _unifi_error = str(e)
+        _unifi_client = None  # force fresh login next time
         logger.error("UniFi error: %s", e)
         if entry:
             entry.stale = True
