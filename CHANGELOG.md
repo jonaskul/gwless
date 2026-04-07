@@ -1,3 +1,7 @@
+## v0.0.43 — 2026-04-07
+
+- fix: security hardening — XSS in syslog display, error leak in /health
+
 ## v0.0.42 — 2026-04-06
 
 - feat: animate side panel open with opacity + slide-in transition
