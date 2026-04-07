@@ -1,3 +1,7 @@
+## v0.2.27 — 2026-04-07
+
+- fix: always show Clear button, greyed out when no filters active
+
 ## v0.2.26 — 2026-04-07
 
 - feat: add Clear filters button
