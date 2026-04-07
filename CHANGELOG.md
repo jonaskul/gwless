@@ -1,3 +1,7 @@
+## v0.1.9 — 2026-04-07
+
+- fix: popover overflow — proper flex scroll containment + re-clamp after async history load
+
 ## v0.1.8 — 2026-04-07
 
 - fix: defer popover positioning to rAF so offsetHeight is accurate
