@@ -1,3 +1,7 @@
+## v0.1.24 — 2026-04-07
+
+- fix: XSS hardening + security response headers
+
 ## v0.1.23 — 2026-04-07
 
 - docs: update README for current feature set
