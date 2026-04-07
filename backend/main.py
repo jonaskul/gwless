@@ -328,8 +328,7 @@ async def health():
         "status": "ok",
         "sophos": sophos_status,
         "unifi":  unifi_status,
-        "sophos_error": _sophos_error,
-        "unifi_error":  _unifi_error,
+        # Raw error strings omitted — full details stay in server logs only
     }
 
 

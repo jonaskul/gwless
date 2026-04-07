@@ -1839,16 +1839,15 @@ async function _refreshSyslogStatus() {
       el.style.color = 'var(--amber, #f39c12)';
     } else if (d.last_event_ts == null && d.messages_received > 0) {
       el.style.color = 'var(--amber, #f39c12)';
-      const pre = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
       const preStyle = 'font-size:10px;overflow-x:auto;max-height:120px;margin:4px 0 0;white-space:pre-wrap;word-break:break-all;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text)';
       if (d.recent_dhcp && d.recent_dhcp.length) {
         // DHCP messages were matched but no lease events — show those for diagnosis
-        el.innerHTML = `DHCP messages received (${d.recent_dhcp.length} matched) but status not recognised — raw DHCP log:<pre style="${preStyle}">${d.recent_dhcp.map(pre).join('\n')}</pre>`;
+        el.innerHTML = `DHCP messages received (${d.recent_dhcp.length} matched) but status not recognised — raw DHCP log:<pre style="${preStyle}">${d.recent_dhcp.map(esc).join('\n')}</pre>`;
       } else {
         // No DHCP match at all — show all raw messages
         let html = `Receiving messages (${d.messages_received} total) but none matched DHCP filter — raw log:`;
         if (d.recent_raw && d.recent_raw.length) {
-          html += `<pre style="${preStyle}">${d.recent_raw.map(pre).join('\n')}</pre>`;
+          html += `<pre style="${preStyle}">${d.recent_raw.map(esc).join('\n')}</pre>`;
         }
         el.innerHTML = html;
       }
