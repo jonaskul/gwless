@@ -1,3 +1,7 @@
+## v0.2.15 — 2026-04-07
+
+- fix: use correct Sophos SFOS XML structure for StaticLease
+
 ## v0.2.14 — 2026-04-07
 
 - debug: log raw DHCPServer config dict from GET response
