@@ -629,6 +629,11 @@ def _read_version() -> str:
     return "unknown"
 
 
+def _version_tuple(v: str):
+    """Convert 'v0.1.4' or '0.1.4' to (0, 1, 4) for comparison."""
+    return tuple(int(x) for x in v.strip().lstrip("v").split("."))
+
+
 def _read_changelog(max_entries: int = 3) -> str:
     """Return the first *max_entries* changelog sections as plain text."""
     for candidate in [
@@ -680,7 +685,7 @@ async def update_check():
     return {
         "current": current,
         "latest": latest,
-        "up_to_date": current == latest,
+        "up_to_date": _version_tuple(current) >= _version_tuple(latest),
         "remote_changelog": remote_changelog,
     }
 
