@@ -1,3 +1,7 @@
+## v0.1.20 — 2026-04-07
+
+- feat: show version number next to logo in header
+
 ## v0.1.19 — 2026-04-07
 
 - chore: remove redundant dict() copy in backup_restore
