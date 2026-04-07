@@ -391,7 +391,7 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     payload = (
         f"<Request>"
         f"<Login><Username>{username}</Username><Password>{password}</Password></Login>"
-        f"<Set operation=\"add\">"
+        f"<Set>"
         f"<DHCPServer>"
         f"<Name>{sname}</Name>"
         f"<StaticLease><Host>"
@@ -412,6 +412,7 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     )
     resp.raise_for_status()
     doc = xmltodict.parse(resp.text)
+    logger.debug("Sophos Set/DHCPServer response: %s", resp.text)
     # Sophos returns <Response><DHCPServer><Status code="200">...
     status = doc.get("Response", {}).get("DHCPServer", {})
     if isinstance(status, dict):
