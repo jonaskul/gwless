@@ -50,6 +50,19 @@ def _scope_for_ip(ip: str, servers: list[dict]) -> "str | None":
     return None
 
 
+def _range_for_ip(ip: str, servers: list[dict]) -> "tuple[str, str]":
+    """Match an IP address to a DHCP server and return its (range_start, range_end)."""
+    if not ip or not servers:
+        return ("", "")
+    prefix = ".".join(ip.split(".")[:3])
+    for s in servers:
+        for ref in (s.get("gateway", ""), s.get("subnet", ""),
+                    s.get("range_start", "") or ""):
+            if ref and ref.startswith(prefix + "."):
+                return (s.get("range_start") or "", s.get("range_end") or "")
+    return ("", "")
+
+
 def merge_clients(
     sophos_leases: list[dict],
     sophos_static: list[dict],
@@ -79,10 +92,12 @@ def merge_clients(
     for lease in sophos_leases:
         mac = normalize_mac(lease.get("mac", ""))
         ip = normalize_ip(lease.get("ip", ""))
-        # Attach VLAN and scope_name from server config if not already set
+        # Attach VLAN, scope_name and range from server config if not already set
         vlan = lease.get("vlan") or _vlan_for_ip(ip, servers)
         scope_name = lease.get("scope_name") or _scope_for_ip(ip, servers)
-        record = {**lease, "mac": mac, "ip": ip, "sophos_type": "dynamic", "vlan": vlan, "scope_name": scope_name}
+        range_start, range_end = _range_for_ip(ip, servers)
+        record = {**lease, "mac": mac, "ip": ip, "sophos_type": "dynamic", "vlan": vlan,
+                  "scope_name": scope_name, "range_start": range_start, "range_end": range_end}
         if mac:
             sophos_by_mac[mac] = record
         if ip:
@@ -188,6 +203,8 @@ def _build_record(
             "lease_type": (sophos or {}).get("sophos_type"),
             "scope": (sophos or {}).get("scope"),
             "scope_name": (sophos or {}).get("scope_name"),
+            "range_start": (sophos or {}).get("range_start"),
+            "range_end": (sophos or {}).get("range_end"),
         } if sophos else None,
         # UniFi fields
         "unifi": {

@@ -1,3 +1,7 @@
+## v0.2.21 — 2026-04-07
+
+- feat: real-time IP validation in Make static form — warns if IP is in dynamic DHCP range or already reserved by another device
+
 ## v0.2.20 — 2026-04-07
 
 - fix: send IPLease in compact format to preserve dynamic DHCP range

@@ -1776,7 +1776,7 @@ function buildPanelContent(c) {
       ${kvRow('Scope',        s.scope_name || s.scope || '—', false)}
       ${kvRow('Lease Start',  s.lease_start || '—', false)}
       ${kvRow('Lease End',    s.lease_end || '—', false)}
-      ${showMakeStatic ? `<div class="make-static-form" data-mac="${esc(s.mac)}" data-scope="${esc(s.scope_name)}">
+      ${showMakeStatic ? `<div class="make-static-form" data-mac="${esc(s.mac)}" data-scope="${esc(s.scope_name)}" data-range-start="${esc(s.range_start||'')}" data-range-end="${esc(s.range_end||'')}">
         <div class="panel-action">
           <button class="make-static-btn">⚓ Make static</button>
           <span class="make-static-status"></span>
@@ -1788,6 +1788,7 @@ function buildPanelContent(c) {
             <button class="make-static-confirm" style="font-size:12px;padding:3px 10px;border:1px solid var(--accent);border-radius:4px;background:none;color:var(--accent);cursor:pointer">Reserve</button>
             <button class="make-static-cancel" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer">Cancel</button>
           </div>
+          <div class="make-static-ip-warn" style="display:none;font-size:11px;color:var(--red);margin-top:4px"></div>
         </div>
       </div>` : ''}
       ${showRemoveStatic ? `<div class="panel-action">
@@ -2048,6 +2049,46 @@ function initEvents() {
     const form = btn.closest('.make-static-form');
     const fields = form.querySelector('.make-static-fields');
     fields.style.display = fields.style.display === 'none' ? '' : 'none';
+  });
+
+  // "Make static" — real-time IP validation
+  document.getElementById('popover-content').addEventListener('input', e => {
+    const input = e.target.closest('.make-static-ip');
+    if (!input) return;
+    const form = input.closest('.make-static-form');
+    const warnEl = form.querySelector('.make-static-ip-warn');
+    const confirmBtn = form.querySelector('.make-static-confirm');
+    const ip = input.value.trim();
+    const { rangeStart, rangeEnd, mac: ownMac } = form.dataset;
+
+    let warn = '';
+
+    // Check if IP is in the dynamic DHCP range
+    if (rangeStart && rangeEnd && ip) {
+      try {
+        const toNum = a => a.split('.').reduce((n, o) => (n << 8) + parseInt(o, 10), 0) >>> 0;
+        const ipNum = toNum(ip);
+        if (ipNum >= toNum(rangeStart) && ipNum <= toNum(rangeEnd)) {
+          warn = `IP ${ip} er i det dynamiske DHCP-området (${rangeStart}–${rangeEnd})`;
+        }
+      } catch (_) {}
+    }
+
+    // Check if IP is already used by another static reservation
+    if (!warn && ip) {
+      for (const c of state.clients) {
+        if (!c.sophos || c.sophos.lease_type !== 'static') continue;
+        if (c.mac === ownMac) continue;
+        if ((c.sophos.ip || '') === ip) {
+          warn = `IP ${ip} er allerede reservert for ${c.sophos.hostname || c.mac}`;
+          break;
+        }
+      }
+    }
+
+    warnEl.textContent = warn;
+    warnEl.style.display = warn ? '' : 'none';
+    confirmBtn.disabled = !!warn;
   });
 
   // "Make static" — cancel
