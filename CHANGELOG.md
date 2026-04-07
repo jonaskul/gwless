@@ -1,3 +1,7 @@
+## v0.2.22 — 2026-04-07
+
+- feat: real-time IP validation in Make static form
+
 ## v0.2.21 — 2026-04-07
 
 - feat: real-time IP validation in Make static form — warns if IP is in dynamic DHCP range or already reserved by another device
