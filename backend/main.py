@@ -794,6 +794,7 @@ async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = Fa
     if "config.yaml" not in names and "history.db" not in names:
         raise HTTPException(400, "Zip does not contain config.yaml or history.db")
 
+    global CONFIG
     if "config.yaml" in names:
         # Snapshot current passwords before overwriting
         saved_passwords: dict = {}
@@ -807,7 +808,6 @@ async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = Fa
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
         cfg_path.write_bytes(zf.read("config.yaml"))
         cfg_path.chmod(0o600)
-        global CONFIG
         with open(cfg_path) as f:
             CONFIG.clear()
             CONFIG.update(yaml.safe_load(f) or {})
