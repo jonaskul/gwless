@@ -1,3 +1,7 @@
+## v0.1.23 — 2026-04-07
+
+- docs: update README for current feature set
+
 ## v0.1.22 — 2026-04-07
 
 - fix: switch OUI source to IEEE CSV + cleaner app settings tab
