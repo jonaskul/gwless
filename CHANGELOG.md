@@ -1,3 +1,7 @@
+## v0.2.18 — 2026-04-07
+
+- fix: replace nonexistent _invalidate_caches() with correct cache invalidation
+
 ## v0.2.17 — 2026-04-07
 
 - fix: use btn-test class for restart service button to match settings style
