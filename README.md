@@ -105,13 +105,19 @@ When syslog has received at least one event it takes priority over SSH. SSH rema
 
 > Port `514` requires root. The default LXC installer runs as root. For unprivileged setups use port > 1024 (e.g. `5140`).
 
-**2. Configure Sophos SFOS** — Logging & Monitoring → Log Settings → Syslog Servers:
-- IP: Gwless container IP
-- Port: `514` (or your port)
-- Protocol: UDP
-- Log format: Default (BSD syslog)
+**2. Configure Sophos SFOS** — Logging & Monitoring → Log Settings → Syslog Servers → Add:
 
-Ensure **Event** logs are enabled and the **DHCP** component is included. Click Apply.
+| Field | Value |
+|-------|-------|
+| Name | `gwless` (or anything) |
+| IP address / Domain | Gwless container IP |
+| Secure log transmission | ☐ unchecked |
+| Port | `514` (or your port) |
+| Facility | `LOCAL0` |
+| Severity level | `Information` |
+| Format | `Standard syslog protocol` |
+
+After saving the server, go to **Log Settings** and ensure **DHCP** events are enabled for the syslog destination. Click Apply.
 
 **3. Verify** — the Settings status row turns green (*"Receiving — N lease(s), last event Xs ago"*) on the first DHCP event. You can trigger one immediately by releasing/renewing a lease on any device.
 
