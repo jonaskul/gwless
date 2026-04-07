@@ -1,3 +1,7 @@
+## v0.3.1 — 2026-04-07
+
+- chore: bump to v0.3.0
+
 ## v0.3.0 — 2026-04-07
 
 ### Static DHCP Reservation Management
