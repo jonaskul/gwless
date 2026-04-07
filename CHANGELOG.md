@@ -1,3 +1,7 @@
+## v1.0.1 — 2026-04-07
+
+- chore: release v1.0.0
+
 ## v1.0.0 — 2026-04-07
 
 First stable release. Core features complete:
