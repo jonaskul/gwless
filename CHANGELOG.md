@@ -1,3 +1,7 @@
+## v0.2.26 — 2026-04-07
+
+- feat: add Clear filters button
+
 ## v0.2.25 — 2026-04-07
 
 - refactor: replace Status filter with Connection Type filter
