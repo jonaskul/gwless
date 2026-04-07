@@ -1,3 +1,7 @@
+## v0.1.29 — 2026-04-07
+
+- feat: add sign-out button to header
+
 ## v0.1.28 — 2026-04-07
 
 - fix: show version in header even when auth is enabled
