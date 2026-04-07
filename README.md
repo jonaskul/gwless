@@ -264,13 +264,39 @@ pct exec <CTID> -- sqlite3 /opt/gwless/history.db \
 
 ## Manual Setup
 
+Gwless runs on any Linux host with Python 3.11+. No Proxmox required — a VM, a Raspberry Pi, a spare machine, or even a Docker container works fine.
+
+**Requirements:** Python 3.11+, `git`, `pip`
+
 ```bash
 git clone https://github.com/jonaskul/gwless.git
 cd gwless
-cp config.yaml.example config.yaml   # or configure via ⚙ Settings after starting
 pip install -r requirements.txt
+```
+
+Copy the example config and edit it, or skip this step and configure everything from the Settings panel after starting:
+
+```bash
+cp config.yaml.example config.yaml
+```
+
+Start the service:
+
+```bash
 python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 ```
+
+Open `http://<host-ip>:8080`, go to **⚙ Settings**, enter your Sophos and UniFi credentials, and click the **Test** buttons before saving.
+
+### Running as a systemd service (optional)
+
+```bash
+sudo cp gwless.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now gwless
+```
+
+> The service file assumes `/opt/gwless` as the working directory. Adjust `WorkingDirectory` and `ExecStart` in the unit file if you cloned elsewhere.
 
 ---
 
