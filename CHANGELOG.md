@@ -1,3 +1,7 @@
+## v0.1.6 — 2026-04-07
+
+- docs: tidy up README — better structure and flow
+
 ## v0.1.5 — 2026-04-07
 
 - fix: version comparison + changelog rendering in update check
