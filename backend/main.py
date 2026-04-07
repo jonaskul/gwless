@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import os
+import secrets
 import subprocess
 import time
 import zipfile
@@ -19,7 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -100,7 +101,8 @@ CONFIG.setdefault("unifi", {
     "host": "", "port": 443, "username": "", "password": "",
     "site": "default", "verify_ssl": False, "poll_interval": 30,
 })
-CONFIG.setdefault("app", {"port": 8080, "log_level": "info", "oui_update_on_start": True, "secret": ""})
+CONFIG.setdefault("app", {"port": 8080, "log_level": "info", "oui_update_on_start": True,
+                          "secret": "", "auth_enabled": False, "auth_username": "", "auth_password": ""})
 CONFIG.setdefault("syslog", {"enabled": False, "port": 514, "bind_host": "0.0.0.0"})
 
 # ---------------------------------------------------------------------------
@@ -321,6 +323,50 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(_SecurityHeadersMiddleware)
 
+# ---------------------------------------------------------------------------
+# Session-based login auth (optional — enabled via config)
+# ---------------------------------------------------------------------------
+
+_SESSION_COOKIE   = "gwless_sid"
+_SESSION_LIFETIME = 86400  # 24 h
+_sessions: dict[str, float] = {}   # token → expiry timestamp
+
+_AUTH_EXEMPT = {"/api/auth/login", "/api/auth/status", "/api/auth/logout"}
+
+
+def _auth_enabled() -> bool:
+    return bool(CONFIG.get("app", {}).get("auth_enabled", False))
+
+
+def _valid_session(token: str | None) -> bool:
+    if not token:
+        return False
+    exp = _sessions.get(token)
+    if not exp:
+        return False
+    if time.time() > exp:
+        del _sessions[token]
+        return False
+    # Slide the expiry window on activity
+    _sessions[token] = time.time() + _SESSION_LIFETIME
+    return True
+
+
+class _AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        path = request.url.path
+        # Only guard /api/* routes; static files must load to render the login page
+        if path.startswith("/api/") and path not in _AUTH_EXEMPT:
+            if _auth_enabled():
+                token = request.cookies.get(_SESSION_COOKIE)
+                if not _valid_session(token):
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+        return await call_next(request)
+
+
+app.add_middleware(_AuthMiddleware)
+
 _VALID_SOURCE = {"sophos_only", "unifi_only", "both"}
 _VALID_STATUS = {"online", "offline"}
 
@@ -332,6 +378,39 @@ def _require_secret(x_gwless_secret: Optional[str] = Header(None)) -> None:
         return  # no secret configured — open access
     if x_gwless_secret != secret:
         raise HTTPException(status_code=403, detail="Invalid or missing X-Gwless-Secret header")
+
+
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    enabled = _auth_enabled()
+    token = request.cookies.get(_SESSION_COOKIE)
+    return {"auth_enabled": enabled, "authenticated": not enabled or _valid_session(token)}
+
+
+@app.post("/api/auth/login")
+async def auth_login(request: Request):
+    body = await request.json()
+    username = body.get("username", "")
+    password = body.get("password", "")
+    app_cfg = CONFIG.get("app", {})
+    if (username != app_cfg.get("auth_username", "")
+            or password != app_cfg.get("auth_password", "")):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = secrets.token_hex(32)
+    _sessions[token] = time.time() + _SESSION_LIFETIME
+    from fastapi.responses import JSONResponse
+    resp = JSONResponse({"status": "ok"})
+    resp.set_cookie(_SESSION_COOKIE, token, httponly=True, samesite="strict",
+                    max_age=_SESSION_LIFETIME, path="/")
+    return resp
+
+
+@app.post("/api/auth/logout")
+async def auth_logout():
+    from fastapi.responses import JSONResponse
+    resp = JSONResponse({"status": "ok"})
+    resp.delete_cookie(_SESSION_COOKIE, path="/")
+    return resp
 
 
 @app.on_event("startup")
@@ -508,6 +587,8 @@ def _masked_config() -> dict:
         cfg["unifi"]["password"] = MASKED
     if cfg.get("app", {}).get("secret"):
         cfg["app"]["secret"] = MASKED
+    if cfg.get("app", {}).get("auth_password"):
+        cfg["app"]["auth_password"] = MASKED
     # Never expose internal callback
     cfg.get("sophos", {}).pop("_save_host_key_cb", None)
     return cfg
@@ -548,6 +629,9 @@ class AppConfig(BaseModel):
     log_level:          str  = "info"
     oui_update_on_start: bool = True
     secret:             str  = ""
+    auth_enabled:       bool = False
+    auth_username:      str  = ""
+    auth_password:      str  = ""
 
 
 class SyslogConfig(BaseModel):
@@ -586,6 +670,7 @@ async def save_config(payload: ConfigPayload):
     new_cfg["sophos"]["api_password"] = _keep_if_masked(new_cfg["sophos"]["api_password"], "sophos", "api_password")
     new_cfg["unifi"]["password"]      = _keep_if_masked(new_cfg["unifi"]["password"],      "unifi",  "password")
     new_cfg["app"]["secret"]          = _keep_if_masked(new_cfg["app"]["secret"],          "app",    "secret")
+    new_cfg["app"]["auth_password"]   = _keep_if_masked(new_cfg["app"]["auth_password"],   "app",    "auth_password")
     # Preserve TOFU key — UI sends it back as-is (read-only field)
     new_cfg["sophos"]["ssh_host_key"] = new_cfg["sophos"].get("ssh_host_key") or CONFIG.get("sophos", {}).get("ssh_host_key", "")
 
