@@ -1,3 +1,7 @@
+## v0.1.5 — 2026-04-07
+
+- fix: version comparison + changelog rendering in update check
+
 ## v0.1.4 — 2026-04-07
 
 - fix: add python-multipart dep + reboot fallback in update.sh
