@@ -432,22 +432,29 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     def _x(val: Any) -> str:
         return xml_escape(str(val)) if val else ""
 
-    iface        = _x(target.get("Interface"))
-    subnet       = _x(target.get("SubnetMask") or target.get("Network"))
-    gateway      = _x(target.get("Gateway") or target.get("GatewayIP"))
-    dns1         = _x(target.get("PrimaryDNSServer") or target.get("DNS1"))
-    dns2         = _x(target.get("SecondaryDNSServer") or target.get("DNS2"))
-    default_lt   = _x(target.get("DefaultLeaseTime") or "86400")
-    max_lt       = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
-    sname        = _x(server_name)
+    sname      = _x(server_name)
+    iface      = _x(target.get("Interface"))
+    subnet     = _x(target.get("SubnetMask") or target.get("Network"))
+    gateway    = _x(target.get("Gateway") or target.get("GatewayIP"))
+    dns1       = _x(target.get("PrimaryDNSServer") or target.get("DNS1"))
+    dns2       = _x(target.get("SecondaryDNSServer") or target.get("DNS2"))
+    default_lt = _x(target.get("DefaultLeaseTime") or "86400")
+    max_lt     = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
 
-    ip_range = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
-    range_start = _x(ip_range.get("StartIP") or ip_range.get("From")) if isinstance(ip_range, dict) else ""
-    range_end   = _x(ip_range.get("EndIP")   or ip_range.get("To"))   if isinstance(ip_range, dict) else ""
+    # IPLease: Sophos returns {'IP': 'start-end'} as a single range string
+    ip_range    = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
+    ip_range_ip = _x(ip_range.get("IP")) if isinstance(ip_range, dict) else ""
+
+    # Optional fields — pass back verbatim so Sophos doesn't reject
+    conflict    = _x(target.get("ConflictDetection"))
+    relay       = _x(target.get("LeaseForRelay"))
+    domain      = _x(target.get("DomainName"))
+    use_dns     = _x(target.get("UseApplianceDNSSettings"))
+    gw_mode     = _x(target.get("UseInterfaceIPasGateway") or target.get("UseInterfaceIPAsGateway"))
 
     # ── Step 3: collect existing static leases (preserve them) ───────────────
     existing_macs: set[str] = set()
-    hosts_xml = ""
+    leases_xml = ""
     for res in _extract_reservations(target):
         if not res:
             continue
@@ -456,12 +463,12 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
         h_name = _x(res.get("HostName")   or res.get("Name") or res.get("Hostname"))
         if h_mac:
             existing_macs.add(h_mac.lower())
-            hosts_xml += (
-                f"<Host>"
+            leases_xml += (
+                f"<Lease>"
+                f"<HostName>{h_name}</HostName>"
                 f"<MACAddress>{h_mac}</MACAddress>"
                 f"<IPAddress>{h_ip}</IPAddress>"
-                f"<HostName>{h_name}</HostName>"
-                f"</Host>"
+                f"</Lease>"
             )
 
     norm_mac = mac.lower()
@@ -469,24 +476,32 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
         return {"ok": False, "message": f"A static reservation for {mac} already exists on this server"}
 
     # Append the new reservation
-    hosts_xml += (
-        f"<Host>"
+    leases_xml += (
+        f"<Lease>"
+        f"<HostName>{_x(hostname)}</HostName>"
         f"<MACAddress>{_x(mac)}</MACAddress>"
         f"<IPAddress>{_x(ip)}</IPAddress>"
-        f"<HostName>{_x(hostname)}</HostName>"
-        f"</Host>"
+        f"</Lease>"
     )
 
     # ── Step 4: build optional XML fragments ─────────────────────────────────
-    range_xml = (
-        f"<IPLease><StartIP>{range_start}</StartIP><EndIP>{range_end}</EndIP></IPLease>"
-        if range_start and range_end else ""
-    )
-    dns_xml = ""
+    range_xml   = f"<IPLease><IP>{ip_range_ip}</IP></IPLease>" if ip_range_ip else ""
+    dns_xml     = ""
     if dns1:
         dns_xml += f"<PrimaryDNSServer>{dns1}</PrimaryDNSServer>"
     if dns2:
         dns_xml += f"<SecondaryDNSServer>{dns2}</SecondaryDNSServer>"
+    extras_xml  = ""
+    if conflict:
+        extras_xml += f"<ConflictDetection>{conflict}</ConflictDetection>"
+    if relay:
+        extras_xml += f"<LeaseForRelay>{relay}</LeaseForRelay>"
+    if domain:
+        extras_xml += f"<DomainName>{domain}</DomainName>"
+    if use_dns:
+        extras_xml += f"<UseApplianceDNSSettings>{use_dns}</UseApplianceDNSSettings>"
+    if gw_mode:
+        extras_xml += f"<UseInterfaceIPasGateway>{gw_mode}</UseInterfaceIPasGateway>"
 
     # ── Step 5: send complete Set payload ─────────────────────────────────────
     set_payload = (
@@ -502,7 +517,8 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
         f"{dns_xml}"
         f"<DefaultLeaseTime>{default_lt}</DefaultLeaseTime>"
         f"<MaxLeaseTime>{max_lt}</MaxLeaseTime>"
-        f"<StaticLease>{hosts_xml}</StaticLease>"
+        f"{extras_xml}"
+        f"<StaticLease>{leases_xml}</StaticLease>"
         f"</DHCPServer>"
         f"</Set>"
         f"</Request>"
@@ -558,6 +574,7 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
     def _x(val: Any) -> str:
         return xml_escape(str(val)) if val else ""
 
+    sname      = _x(server_name)
     iface      = _x(target.get("Interface"))
     subnet     = _x(target.get("SubnetMask") or target.get("Network"))
     gateway    = _x(target.get("Gateway") or target.get("GatewayIP"))
@@ -565,16 +582,20 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
     dns2       = _x(target.get("SecondaryDNSServer") or target.get("DNS2"))
     default_lt = _x(target.get("DefaultLeaseTime") or "86400")
     max_lt     = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
-    sname      = _x(server_name)
 
     ip_range    = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
-    range_start = _x(ip_range.get("StartIP") or ip_range.get("From")) if isinstance(ip_range, dict) else ""
-    range_end   = _x(ip_range.get("EndIP")   or ip_range.get("To"))   if isinstance(ip_range, dict) else ""
+    ip_range_ip = _x(ip_range.get("IP")) if isinstance(ip_range, dict) else ""
+
+    conflict = _x(target.get("ConflictDetection"))
+    relay    = _x(target.get("LeaseForRelay"))
+    domain   = _x(target.get("DomainName"))
+    use_dns  = _x(target.get("UseApplianceDNSSettings"))
+    gw_mode  = _x(target.get("UseInterfaceIPasGateway") or target.get("UseInterfaceIPAsGateway"))
 
     # ── Step 3: rebuild static leases, skipping the target MAC ───────────────
-    norm_mac = mac.lower()
-    hosts_xml = ""
-    found = False
+    norm_mac   = mac.lower()
+    leases_xml = ""
+    found      = False
     for res in _extract_reservations(target):
         if not res:
             continue
@@ -584,29 +605,37 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
             continue  # skip — this is the one to remove
         h_ip   = _x(res.get("IPAddress") or res.get("IP"))
         h_name = _x(res.get("HostName")  or res.get("Name") or res.get("Hostname"))
-        hosts_xml += (
-            f"<Host>"
+        leases_xml += (
+            f"<Lease>"
+            f"<HostName>{h_name}</HostName>"
             f"<MACAddress>{_x(h_mac)}</MACAddress>"
             f"<IPAddress>{h_ip}</IPAddress>"
-            f"<HostName>{h_name}</HostName>"
-            f"</Host>"
+            f"</Lease>"
         )
 
     if not found:
         return {"ok": False, "message": f"No static reservation for {mac} found on '{server_name}'"}
 
     # ── Step 4: build optional XML fragments ─────────────────────────────────
-    range_xml = (
-        f"<IPLease><StartIP>{range_start}</StartIP><EndIP>{range_end}</EndIP></IPLease>"
-        if range_start and range_end else ""
-    )
-    dns_xml = ""
+    range_xml  = f"<IPLease><IP>{ip_range_ip}</IP></IPLease>" if ip_range_ip else ""
+    dns_xml    = ""
     if dns1:
         dns_xml += f"<PrimaryDNSServer>{dns1}</PrimaryDNSServer>"
     if dns2:
         dns_xml += f"<SecondaryDNSServer>{dns2}</SecondaryDNSServer>"
+    extras_xml = ""
+    if conflict:
+        extras_xml += f"<ConflictDetection>{conflict}</ConflictDetection>"
+    if relay:
+        extras_xml += f"<LeaseForRelay>{relay}</LeaseForRelay>"
+    if domain:
+        extras_xml += f"<DomainName>{domain}</DomainName>"
+    if use_dns:
+        extras_xml += f"<UseApplianceDNSSettings>{use_dns}</UseApplianceDNSSettings>"
+    if gw_mode:
+        extras_xml += f"<UseInterfaceIPasGateway>{gw_mode}</UseInterfaceIPasGateway>"
 
-    static_xml = f"<StaticLease>{hosts_xml}</StaticLease>" if hosts_xml else ""
+    static_xml = f"<StaticLease>{leases_xml}</StaticLease>" if leases_xml else ""
 
     # ── Step 5: send complete Set payload ────────────────────────────────────
     set_payload = (
@@ -622,6 +651,7 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
         f"{dns_xml}"
         f"<DefaultLeaseTime>{default_lt}</DefaultLeaseTime>"
         f"<MaxLeaseTime>{max_lt}</MaxLeaseTime>"
+        f"{extras_xml}"
         f"{static_xml}"
         f"</DHCPServer>"
         f"</Set>"
