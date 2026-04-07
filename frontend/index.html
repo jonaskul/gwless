@@ -2069,7 +2069,7 @@ function initEvents() {
         const toNum = a => a.split('.').reduce((n, o) => (n << 8) + parseInt(o, 10), 0) >>> 0;
         const ipNum = toNum(ip);
         if (ipNum >= toNum(rangeStart) && ipNum <= toNum(rangeEnd)) {
-          warn = `IP ${ip} er i det dynamiske DHCP-området (${rangeStart}–${rangeEnd})`;
+          warn = `IP ${ip} is within the dynamic DHCP range (${rangeStart}–${rangeEnd})`;
         }
       } catch (_) {}
     }
@@ -2080,7 +2080,7 @@ function initEvents() {
         if (!c.sophos || c.sophos.lease_type !== 'static') continue;
         if (c.mac === ownMac) continue;
         if ((c.sophos.ip || '') === ip) {
-          warn = `IP ${ip} er allerede reservert for ${c.sophos.hostname || c.mac}`;
+          warn = `IP ${ip} is already reserved for ${c.sophos.hostname || c.mac}`;
           break;
         }
       }
