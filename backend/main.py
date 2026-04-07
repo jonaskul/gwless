@@ -73,9 +73,13 @@ def _load_config() -> dict:
 def _save_config(cfg: dict) -> None:
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    # Write to temp file first, then rename atomically — prevents empty config
+    # on startup if the service crashes during a write.
+    tmp = path.with_suffix(".yaml.tmp")
+    with open(tmp, "w") as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
-    path.chmod(0o600)
+    tmp.chmod(0o600)
+    tmp.replace(path)  # atomic on Linux
     logger.info("Config saved to %s", path)
 
 
@@ -309,6 +313,12 @@ async def on_startup():
     logging.basicConfig(
         level=getattr(logging, log_level, logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    )
+    sophos_host = CONFIG.get("sophos", {}).get("host", "")
+    unifi_host  = CONFIG.get("unifi",  {}).get("host", "")
+    logger.info(
+        "Gwless %s starting — config: sophos.host=%r unifi.host=%r",
+        _read_version(), sophos_host, unifi_host,
     )
     if CONFIG.get("app", {}).get("oui_update_on_start", True):
         ensure_oui_db()
@@ -827,9 +837,8 @@ async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = Fa
             for (section, key), value in saved_passwords.items():
                 if value is not None:
                     CONFIG.setdefault(section, {})[key] = value
-            # Persist back to disk
-            with open(cfg_path, "w") as f:
-                yaml.dump(dict(CONFIG), f, default_flow_style=False, allow_unicode=True)
+            # Persist back to disk (atomic write)
+            _save_config(dict(CONFIG))
         _rebuild_caches()
         logger.info("Config restored from backup (skip_passwords=%s)", skip_passwords)
 
