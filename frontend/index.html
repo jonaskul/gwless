@@ -2627,13 +2627,15 @@ document.addEventListener('DOMContentLoaded', () => {
   initSorting();
   initEvents();
 
+  // Version is a public endpoint — always show it regardless of auth state
+  fetch('/api/update/info').then(r => r.json()).then(d => {
+    const el = document.getElementById('header-version');
+    if (el && d.version) el.textContent = 'v' + d.version;
+  }).catch(() => {});
+
   // Auth: show login overlay if needed, otherwise load normally
   checkAuth().then(ok => {
     if (ok) {
-      fetch('/api/update/info').then(r => r.json()).then(d => {
-        const el = document.getElementById('header-version');
-        if (el && d.version) el.textContent = 'v' + d.version;
-      }).catch(() => {});
       checkSetupRequired();
       fetchClients().then(startCountdown);
       fetchStats();
