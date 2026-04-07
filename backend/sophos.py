@@ -383,8 +383,28 @@ def _parse_sophos_status(doc: dict) -> dict:
             msg = code.get("#text", "")
             if code_val == "200":
                 return {"ok": True}
-            return {"ok": False, "message": msg or f"Sophos returned code {code_val}"}
+            # Include InvalidParams in error if present
+            invalid = status.get("InvalidParams", {})
+            params = invalid.get("Params", []) if isinstance(invalid, dict) else []
+            if isinstance(params, str):
+                params = [params]
+            detail = ", ".join(params) if params else ""
+            full_msg = f"{msg}: {detail}" if detail else msg or f"Sophos returned code {code_val}"
+            return {"ok": False, "message": full_msg}
     return {"ok": True}
+
+
+def _sanitize_hostname(name: str) -> str:
+    """Replace characters invalid in Sophos DHCP hostnames (spaces → hyphens)."""
+    return name.replace(" ", "-") if name else ""
+
+
+def _split_ip_range(range_str: str) -> tuple[str, str]:
+    """Split 'start-end' IP range string into (start, end). Returns ('', '') on failure."""
+    if range_str and "-" in range_str:
+        parts = range_str.split("-", 1)
+        return parts[0].strip(), parts[1].strip()
+    return "", ""
 
 
 def create_static_reservation(config: dict, server_name: str, mac: str, ip: str, hostname: str) -> dict:
@@ -441,9 +461,10 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     default_lt = _x(target.get("DefaultLeaseTime") or "86400")
     max_lt     = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
 
-    # IPLease: Sophos returns {'IP': 'start-end'} as a single range string
-    ip_range    = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
-    ip_range_ip = _x(ip_range.get("IP")) if isinstance(ip_range, dict) else ""
+    # IPLease: GET returns {'IP': 'start-end'}; Set needs separate StartIP/EndIP
+    ip_range     = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
+    ip_range_raw = ip_range.get("IP", "") if isinstance(ip_range, dict) else ""
+    range_start, range_end = _split_ip_range(ip_range_raw)
 
     # Optional fields — pass back verbatim so Sophos doesn't reject
     conflict    = _x(target.get("ConflictDetection"))
@@ -465,7 +486,7 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
             existing_macs.add(h_mac.lower())
             leases_xml += (
                 f"<Lease>"
-                f"<HostName>{h_name}</HostName>"
+                f"<HostName>{_x(_sanitize_hostname(h_name))}</HostName>"
                 f"<MACAddress>{h_mac}</MACAddress>"
                 f"<IPAddress>{h_ip}</IPAddress>"
                 f"</Lease>"
@@ -478,14 +499,17 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     # Append the new reservation
     leases_xml += (
         f"<Lease>"
-        f"<HostName>{_x(hostname)}</HostName>"
+        f"<HostName>{_x(_sanitize_hostname(hostname))}</HostName>"
         f"<MACAddress>{_x(mac)}</MACAddress>"
         f"<IPAddress>{_x(ip)}</IPAddress>"
         f"</Lease>"
     )
 
     # ── Step 4: build optional XML fragments ─────────────────────────────────
-    range_xml   = f"<IPLease><IP>{ip_range_ip}</IP></IPLease>" if ip_range_ip else ""
+    range_xml = (
+        f"<IPLease><StartIP>{_x(range_start)}</StartIP><EndIP>{_x(range_end)}</EndIP></IPLease>"
+        if range_start and range_end else ""
+    )
     dns_xml     = ""
     if dns1:
         dns_xml += f"<PrimaryDNSServer>{dns1}</PrimaryDNSServer>"
@@ -583,8 +607,9 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
     default_lt = _x(target.get("DefaultLeaseTime") or "86400")
     max_lt     = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
 
-    ip_range    = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
-    ip_range_ip = _x(ip_range.get("IP")) if isinstance(ip_range, dict) else ""
+    ip_range     = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
+    ip_range_raw = ip_range.get("IP", "") if isinstance(ip_range, dict) else ""
+    range_start, range_end = _split_ip_range(ip_range_raw)
 
     conflict = _x(target.get("ConflictDetection"))
     relay    = _x(target.get("LeaseForRelay"))
@@ -607,7 +632,7 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
         h_name = _x(res.get("HostName")  or res.get("Name") or res.get("Hostname"))
         leases_xml += (
             f"<Lease>"
-            f"<HostName>{h_name}</HostName>"
+            f"<HostName>{_x(_sanitize_hostname(h_name))}</HostName>"
             f"<MACAddress>{_x(h_mac)}</MACAddress>"
             f"<IPAddress>{h_ip}</IPAddress>"
             f"</Lease>"
@@ -617,7 +642,10 @@ def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
         return {"ok": False, "message": f"No static reservation for {mac} found on '{server_name}'"}
 
     # ── Step 4: build optional XML fragments ─────────────────────────────────
-    range_xml  = f"<IPLease><IP>{ip_range_ip}</IP></IPLease>" if ip_range_ip else ""
+    range_xml = (
+        f"<IPLease><StartIP>{_x(range_start)}</StartIP><EndIP>{_x(range_end)}</EndIP></IPLease>"
+        if range_start and range_end else ""
+    )
     dns_xml    = ""
     if dns1:
         dns_xml += f"<PrimaryDNSServer>{dns1}</PrimaryDNSServer>"
