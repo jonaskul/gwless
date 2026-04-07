@@ -20,7 +20,18 @@ pip3 install -r "${GWLESS_DIR}/requirements.txt" \
   --break-system-packages --quiet \
   --no-warn-script-location --root-user-action=ignore
 
-echo "[3/3] Scheduling service restart..."
-nohup bash -c 'sleep 3 && systemctl restart gwless' > /dev/null 2>&1 &
+echo "[3/3] Restarting service..."
+nohup bash -c '
+  sleep 2
+  systemctl restart gwless
+  for i in $(seq 1 15); do
+    sleep 1
+    if systemctl is-active --quiet gwless; then
+      exit 0
+    fi
+  done
+  # Service did not recover after 15s — reboot as fallback
+  systemctl reboot
+' > /dev/null 2>&1 &
 
 echo "Done. Service restarting in ~3 seconds."
