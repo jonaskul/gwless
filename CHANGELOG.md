@@ -1,3 +1,7 @@
+## v0.3.2 — 2026-04-07
+
+- chore: remove debug XML logging from DHCP reservation functions
+
 ## v0.3.1 — 2026-04-07
 
 - chore: bump to v0.3.0
