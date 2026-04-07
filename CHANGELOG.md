@@ -1,3 +1,7 @@
+## v0.1.16 — 2026-04-07
+
+- fix: atomic config write + startup log showing loaded credentials
+
 ## v0.1.15 — 2026-04-07
 
 - fix: backup config before update + remove config.yaml.example as runtime fallback
