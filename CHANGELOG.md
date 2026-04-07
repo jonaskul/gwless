@@ -1,3 +1,7 @@
+## v0.1.7 — 2026-04-07
+
+- feat: replace side panel with mouse-position popover
+
 ## v0.1.6 — 2026-04-07
 
 - docs: tidy up README — better structure and flow
