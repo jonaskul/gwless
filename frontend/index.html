@@ -309,64 +309,62 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 }
 #empty .empty-icon { font-size: 48px; }
 
-/* ── Slide-over panel ── */
-#panel {
-  width: 0;
-  overflow: hidden;
+/* ── Detail popover ── */
+#popover {
+  position: fixed;
+  z-index: 900;
+  display: none;
+  flex-direction: column;
+  width: 380px;
+  max-height: 80vh;
   background: var(--surface);
-  border-left: 1px solid var(--border);
-  transition: width 0.24s cubic-bezier(0.4,0,0.2,1);
-  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+  overflow: hidden;
+}
+#popover.open { display: flex; animation: popover-in 0.15s ease; }
+@keyframes popover-in { from { opacity:0; transform:scale(0.97); } to { opacity:1; transform:scale(1); } }
+
+#popover-inner {
   display: flex;
   flex-direction: column;
-}
-#panel.open {
-  width: 420px;
-  min-width: 420px;
+  overflow: hidden;
+  max-height: 80vh;
 }
 
-#panel-inner {
-  width: 420px;
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-  opacity: 0;
-  transform: translateX(16px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-#panel.open #panel-inner {
-  opacity: 1;
-  transform: translateX(0);
-}
-#panel-inner::-webkit-scrollbar { width: 5px; }
-#panel-inner::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-#panel-header {
+#popover-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 20px;
   gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
+#popover-title { font-size: 14px; font-weight: 600; word-break: break-all; }
+#popover-subtitle { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
 
-#panel-title {
-  font-size: 15px;
-  font-weight: 600;
-  word-break: break-all;
-}
-
-#panel-close {
+#popover-close {
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
   padding: 2px 6px;
   line-height: 1;
   border-radius: 4px;
   flex-shrink: 0;
 }
-#panel-close:hover { background: var(--border); color: var(--text); }
+#popover-close:hover { background: var(--border); color: var(--text); }
+
+#popover-content {
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  flex: 1;
+}
+#popover-content::-webkit-scrollbar { width: 4px; }
+#popover-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
 .panel-section {
   margin-bottom: 20px;
@@ -855,19 +853,6 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       </div>
     </div>
 
-    <!-- Slide-over panel -->
-    <div id="panel">
-      <div id="panel-inner">
-        <div id="panel-header">
-          <div>
-            <div id="panel-title">—</div>
-            <div id="panel-subtitle" style="color:var(--text-muted);font-size:12px;margin-top:3px"></div>
-          </div>
-          <button id="panel-close" title="Close (Esc)">✕</button>
-        </div>
-        <div id="panel-content"></div>
-      </div>
-    </div>
   </div>
 
 </div>
@@ -1339,9 +1324,9 @@ function buildRow(c) {
     <td>${statusDot}</td>
   `;
 
-  tr.addEventListener('click', () => {
+  tr.addEventListener('click', e => {
     if (state.selectedMac === c.mac) closePanel();
-    else openPanel(c);
+    else openPanel(c, e);
   });
   return tr;
 }
@@ -1523,20 +1508,19 @@ function updateVlanFilter() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Slide-over panel
+// Detail popover
 // ─────────────────────────────────────────────────────────────────────────────
-function openPanel(c) {
+function openPanel(c, e) {
   state.selectedMac = c.mac;
-  // Update row highlights
   document.querySelectorAll('tr.data-row').forEach(r => {
     r.classList.toggle('selected', r.dataset.mac === c.mac);
   });
 
-  document.getElementById('panel-title').textContent = c.hostname || c.mac || '—';
-  document.getElementById('panel-subtitle').innerHTML =
+  document.getElementById('popover-title').textContent = c.hostname || c.mac || '—';
+  document.getElementById('popover-subtitle').innerHTML =
     `<span class="mono">${esc(c.mac || '')}</span> &middot; ${sourceLabel(c.source)}`;
 
-  const content = document.getElementById('panel-content');
+  const content = document.getElementById('popover-content');
   content.innerHTML = buildPanelContent(c);
 
   // Append history section and populate async
@@ -1554,11 +1538,30 @@ function openPanel(c) {
         + '<div style="color:var(--text-muted);font-size:12px">Unavailable</div>';
     });
 
-  document.getElementById('panel').classList.add('open');
+  // Position near cursor, flip if near viewport edge
+  const pop = document.getElementById('popover');
+  pop.style.visibility = 'hidden';
+  pop.style.display = 'flex';
+  pop.classList.add('open');
+
+  const margin = 12;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  const W = window.innerWidth, H = window.innerHeight;
+  let x = e.clientX + margin;
+  let y = e.clientY + margin;
+  if (x + pw > W - margin) x = e.clientX - pw - margin;
+  if (y + ph > H - margin) y = H - ph - margin;
+  if (x < margin) x = margin;
+  if (y < margin) y = margin;
+  pop.style.left = x + 'px';
+  pop.style.top  = y + 'px';
+  pop.style.visibility = '';
 }
 
 function closePanel() {
-  document.getElementById('panel').classList.remove('open');
+  const pop = document.getElementById('popover');
+  pop.classList.remove('open');
+  pop.style.display = 'none';
   state.selectedMac = null;
   document.querySelectorAll('tr.data-row.selected').forEach(r => r.classList.remove('selected'));
 }
@@ -1817,15 +1820,17 @@ function initEvents() {
     document.getElementById('btn-test-sophos-ssh').style.display = show ? '' : 'none';
   });
 
-  // Panel close
-  document.getElementById('panel-close').addEventListener('click', closePanel);
+  // Popover close button
+  document.getElementById('popover-close').addEventListener('click', closePanel);
 
-  // Escape key — handled centrally in DOMContentLoaded
-
-  // Click outside panel (on table area)
-  document.getElementById('table-wrap').addEventListener('click', e => {
-    if (!e.target.closest('tr.data-row') && state.selectedMac) closePanel();
-  });
+  // Click outside popover closes it (capture phase so it runs before row click)
+  document.addEventListener('click', e => {
+    if (state.selectedMac &&
+        !e.target.closest('#popover') &&
+        !e.target.closest('tr.data-row')) {
+      closePanel();
+    }
+  }, true);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2447,5 +2452,19 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchStats();
 });
 </script>
+
+<!-- Detail popover -->
+<div id="popover">
+  <div id="popover-inner">
+    <div id="popover-header">
+      <div>
+        <div id="popover-title"></div>
+        <div id="popover-subtitle"></div>
+      </div>
+      <button id="popover-close" title="Close (Esc)">✕</button>
+    </div>
+    <div id="popover-content"></div>
+  </div>
+</div>
 </body>
 </html>
