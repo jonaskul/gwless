@@ -521,7 +521,20 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 }
 #settings-btn:hover { color: var(--accent); border-color: var(--accent); }
 #settings-btn.needs-setup { color: var(--amber); border-color: var(--amber); animation: pulse-amber 2s ease-in-out infinite; }
-#signout-btn:hover { color: var(--red); border-color: var(--red); }
+#signout-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--red);
+  font-size: 15px;
+  line-height: 1;
+  padding: 5px 9px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+#signout-btn:hover { opacity: 1; border-color: var(--red); }
 @keyframes pulse-amber { 0%,100%{opacity:1} 50%{opacity:0.55} }
 
 /* ── Settings modal ── */
@@ -2590,6 +2603,10 @@ async function submitLogin() {
     });
     if (!r.ok) { errEl.textContent = 'Invalid username or password'; return; }
     document.getElementById('login-overlay').classList.remove('open');
+    fetch('/api/update/info').then(r => r.json()).then(d => {
+      const el = document.getElementById('header-version');
+      if (el && d.version) el.textContent = 'v' + d.version;
+    }).catch(() => {});
     checkSetupRequired();
     fetchClients().then(startCountdown);
     fetchStats();
