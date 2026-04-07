@@ -34,7 +34,7 @@ Merges DHCP lease data from Sophos and client data from UniFi into one unified, 
 - In-app OS update (`apt upgrade`) streamed live
 - Backup & Restore — download/upload a ZIP of `config.yaml` + `history.db`, with password include/exclude
 - OUI vendor lookup — local database, auto-downloaded on first start (IEEE source, manual update button in settings)
-- Backup & Restore with optional password include/exclude
+- Optional login page — username/password auth with 24 h session, enabled from Settings
 - Version number displayed in header
 
 ---
@@ -103,6 +103,18 @@ Ensure **Event** logs are enabled and the **DHCP** component is included. Click 
 
 ## Security
 
+### Login Page
+
+An optional username/password login can be enabled to protect the entire dashboard.
+
+1. Open **⚙ Settings → App → Login**
+2. Tick **Enable login page**, set a username and password, click **Save**
+3. All `/api/*` endpoints are immediately protected — the browser will show the login screen on next load
+
+Sessions are stored in memory (cleared on service restart) and expire after 24 hours of inactivity. The session cookie is `HttpOnly` and `SameSite=Strict`.
+
+> The API Secret (below) and the login page are independent. The login page controls who can view the dashboard; the API Secret controls who can change settings.
+
 ### API Secret
 
 Mutating endpoints can be protected with a shared secret.
@@ -136,7 +148,10 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 | `syslog.port` | `514` | UDP port |
 | `syslog.bind_host` | `0.0.0.0` | Bind address |
 | `app.oui_update_on_start` | `true` | Download OUI database if missing |
-| `app.secret` | — | Optional API secret |
+| `app.secret` | — | Optional API secret (protects mutating endpoints) |
+| `app.auth_enabled` | `false` | Enable login page |
+| `app.auth_username` | — | Login username |
+| `app.auth_password` | — | Login password |
 
 ---
 
@@ -169,6 +184,14 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 | `GET /api/update/check` | Compare with GitHub + remote changelog |
 | `POST /api/update/apply` | Run `update.sh`, stream output (SSE) |
 | `POST /api/update/os` | Run `apt upgrade`, stream output (SSE) |
+
+### Auth *(only present when `app.auth_enabled` is true)*
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/auth/status` | Returns `{auth_enabled, authenticated}` |
+| `POST /api/auth/login` | Login with `{username, password}` — sets session cookie |
+| `POST /api/auth/logout` | Clears session |
 
 ### Configuration *(protected if `app.secret` is set)*
 
