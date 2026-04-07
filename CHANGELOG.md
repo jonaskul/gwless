@@ -1,3 +1,7 @@
+## v0.2.8 — 2026-04-07
+
+- fix: remove invalid operation="add" attribute from Sophos Set request
+
 ## v0.2.7 — 2026-04-07
 
 - fix: use s.lease_type instead of c.lease_type for Make static condition
