@@ -6,6 +6,16 @@ Merges DHCP lease data from Sophos and client data from UniFi into one unified, 
 
 ---
 
+## Requirements
+
+- **Proxmox VE** host (tested on PVE 8)
+- **Sophos XGS** firewall running **SFOS 22** — WebAdmin API access required (port 4444)
+- **UniFi Network Application** v8+ — local or cloud controller
+
+The LXC container needs outbound internet access on first start to download Python packages and the OUI vendor database.
+
+---
+
 ## Features
 
 **Dashboard**
@@ -14,7 +24,7 @@ Merges DHCP lease data from Sophos and client data from UniFi into one unified, 
 - Live status — green = active in UniFi, grey = lease-only
 - Detail popover at mouse cursor — full Sophos + UniFi data, one-click copy, and history
 - Sortable columns, full-text search (hostname / IP / MAC / vendor)
-- Multi-select filters: VLAN, source, status
+- Multi-select filters: VLAN, source, connection type, lease type — with one-click clear
 - Auto-refresh every 30 s with visible countdown
 - Stale-data warnings when backend sources go silent
 - Light/dark mode, 12/24 h clock, EU/US date format
@@ -28,6 +38,12 @@ Merges DHCP lease data from Sophos and client data from UniFi into one unified, 
 **History & events**
 - SQLite-backed device history — first/last seen, IP/hostname changes
 - Global event feed via `⏱` in the header
+
+**DHCP Management**
+- Create and remove static DHCP reservations directly from the device popover
+- Expandable form pre-filled with current IP and hostname — editable before submitting
+- Real-time validation: warns if the entered IP is inside the dynamic range or already reserved
+- Sophos XML API is updated live; dashboard refreshes automatically
 
 **Management**
 - In-app update — check, preview changelog, one-click apply with live output
@@ -203,6 +219,9 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 | `GET /api/backup` | Download backup ZIP (`config.yaml` + `history.db`) |
 | `POST /api/restore` | Restore from backup ZIP |
 | `POST /api/oui/update` | Re-download OUI vendor database |
+| `POST /api/restart` | Restart the gwless service |
+| `POST /api/sophos/dhcp/reserve` | Create a static DHCP reservation on Sophos |
+| `POST /api/sophos/dhcp/unreserve` | Remove a static DHCP reservation from Sophos |
 | `POST /api/test/sophos-ssh` | Test Sophos SSH |
 | `POST /api/test/sophos-api` | Test Sophos XML API |
 | `POST /api/test/unifi` | Test UniFi connectivity |
