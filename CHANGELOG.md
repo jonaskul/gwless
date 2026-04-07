@@ -1,3 +1,7 @@
+## v0.2.16 — 2026-04-07
+
+- fix: correct IPLease format and sanitize hostnames for Sophos Set
+
 ## v0.2.15 — 2026-04-07
 
 - fix: use correct Sophos SFOS XML structure for StaticLease
