@@ -1,3 +1,7 @@
+## v0.1.21 — 2026-04-07
+
+- fix: robust OUI download + manual update button in settings
+
 ## v0.1.20 — 2026-04-07
 
 - feat: show version number next to logo in header
