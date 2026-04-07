@@ -899,7 +899,8 @@ async def sophos_dhcp_reserve(body: ReservePayload):
             lambda: create_static_reservation(cfg, body.server_name, body.mac, body.ip, body.hostname)
         )
         if result.get("ok"):
-            _invalidate_caches()
+            _cache_leases.invalidate()
+            _cache_sophos_cfg.invalidate()
         return result
     except Exception as e:
         return {"ok": False, "message": str(e)}
@@ -917,7 +918,8 @@ async def sophos_dhcp_unreserve(body: UnreservePayload):
             lambda: remove_static_reservation(cfg, body.server_name, body.mac)
         )
         if result.get("ok"):
-            _invalidate_caches()
+            _cache_leases.invalidate()
+            _cache_sophos_cfg.invalidate()
         return result
     except Exception as e:
         return {"ok": False, "message": str(e)}
