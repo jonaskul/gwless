@@ -1,3 +1,7 @@
+## v0.1.14 — 2026-04-07
+
+- fix: remove systemctl reboot from update.sh — log error instead + syntax check before restart
+
 ## v0.1.13 — 2026-04-07
 
 - feat: include-passwords toggle for backup download
