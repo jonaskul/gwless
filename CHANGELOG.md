@@ -1,3 +1,7 @@
+## v0.2.6 — 2026-04-07
+
+- fix: resolve scope_name for syslog/dynamic leases from server list
+
 ## v0.2.5 — 2026-04-07
 
 - feat: Make static DHCP reservation from device popover
