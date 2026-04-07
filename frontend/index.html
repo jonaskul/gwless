@@ -1538,24 +1538,27 @@ function openPanel(c, e) {
         + '<div style="color:var(--text-muted);font-size:12px">Unavailable</div>';
     });
 
-  // Position near cursor, flip if near viewport edge
+  // Position near cursor after layout so offsetHeight is accurate
   const pop = document.getElementById('popover');
   pop.style.visibility = 'hidden';
   pop.style.display = 'flex';
   pop.classList.add('open');
 
-  const margin = 12;
-  const pw = pop.offsetWidth, ph = pop.offsetHeight;
-  const W = window.innerWidth, H = window.innerHeight;
-  let x = e.clientX + margin;
-  let y = e.clientY + margin;
-  if (x + pw > W - margin) x = e.clientX - pw - margin;
-  if (y + ph > H - margin) y = H - ph - margin;
-  if (x < margin) x = margin;
-  if (y < margin) y = margin;
-  pop.style.left = x + 'px';
-  pop.style.top  = y + 'px';
-  pop.style.visibility = '';
+  const cx = e.clientX, cy = e.clientY;
+  requestAnimationFrame(() => {
+    const margin = 12;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    const W = window.innerWidth, H = window.innerHeight;
+    let x = cx + margin;
+    let y = cy + margin;
+    if (x + pw > W - margin) x = cx - pw - margin;
+    if (y + ph > H - margin) y = H - ph - margin;
+    if (x < margin) x = margin;
+    if (y < margin) y = margin;
+    pop.style.left = x + 'px';
+    pop.style.top  = y + 'px';
+    pop.style.visibility = '';
+  });
 }
 
 function closePanel() {
