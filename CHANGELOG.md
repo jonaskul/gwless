@@ -1,3 +1,7 @@
+## v0.1.8 — 2026-04-07
+
+- fix: defer popover positioning to rAF so offsetHeight is accurate
+
 ## v0.1.7 — 2026-04-07
 
 - feat: replace side panel with mouse-position popover
