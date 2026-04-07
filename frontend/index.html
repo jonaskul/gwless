@@ -118,6 +118,7 @@ select.filter, button.filter {
 }
 select.filter:focus, button.filter:focus,
 button.filter:hover { border-color: var(--accent); }
+button.filter:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
 
 /* ── Multi-select dropdown ── */
 .ms-wrap { position: relative; }
@@ -911,7 +912,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <button class="filter" id="ms-lease-type-btn" type="button">All lease types ▾</button>
         <div class="ms-panel" id="ms-lease-type-panel" hidden></div>
       </div>
-      <button id="clear-filters-btn" title="Clear all filters" style="display:none">✕ Clear</button>
+      <button id="clear-filters-btn" class="filter" title="Clear all filters" disabled>✕ Clear</button>
       <button id="events-btn" title="Recent events">⏱ Events</button>
       <button id="settings-btn" title="Settings">⚙ Settings</button>
       <button id="signout-btn" title="Sign out" style="display:none">⎋ Sign out</button>
@@ -1412,7 +1413,7 @@ function applyFilters() {
   const anyFilter = state.search || state.filterVlans.size || state.filterSources.size ||
                     state.filterConnTypes.size || state.filterLeaseTypes.size;
   const clearBtn = document.getElementById('clear-filters-btn');
-  if (clearBtn) clearBtn.style.display = anyFilter ? '' : 'none';
+  if (clearBtn) clearBtn.disabled = !anyFilter;
 }
 
 function sortCompare(a, b, col, dir) {
