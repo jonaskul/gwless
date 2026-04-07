@@ -899,6 +899,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       <button class="settings-tab-btn" data-tab="sophos" onclick="switchTab('sophos')">Sophos</button>
       <button class="settings-tab-btn" data-tab="app" onclick="switchTab('app')">App</button>
       <button class="settings-tab-btn" data-tab="update" onclick="switchTab('update')">Update</button>
+      <button class="settings-tab-btn" data-tab="backup" onclick="switchTab('backup')">Backup</button>
     </div>
 
     <!-- General -->
@@ -1122,6 +1123,31 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <span id="os-update-result" class="test-result"></span>
       </div>
       <div id="log-os-update" class="live-log" hidden></div>
+    </div>
+
+    <!-- Backup -->
+    <div class="settings-section" data-tab="backup" style="display:none">
+      <div class="settings-section-title">Backup</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px">
+        Downloads a ZIP containing <code style="font-size:11px">config.yaml</code> (credentials &amp; settings)
+        and <code style="font-size:11px">history.db</code> (device history).
+        <strong style="color:var(--amber)">The backup contains passwords in plaintext — store it securely.</strong>
+      </p>
+      <div class="settings-test-row">
+        <button class="btn-test" onclick="downloadBackup()">⬇ Download backup</button>
+        <span id="backup-result" class="test-result"></span>
+      </div>
+
+      <div class="settings-section-title" style="margin-top:20px">Restore</div>
+      <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px">
+        Upload a previously downloaded backup ZIP.
+        Settings are applied immediately; history requires a service restart to take effect.
+      </p>
+      <div class="settings-test-row" style="flex-wrap:wrap;gap:8px">
+        <input type="file" id="restore-file" accept=".zip" style="font-size:12px;color:var(--text);flex:1;min-width:0">
+        <button class="btn-test" onclick="restoreBackup()">⬆ Restore</button>
+        <span id="restore-result" class="test-result"></span>
+      </div>
     </div>
 
     <div class="settings-footer">
@@ -2280,6 +2306,63 @@ async function _waitForRestart() {
   }
   resultEl.className = 'test-result err';
   resultEl.textContent = '✗ Service did not come back in 60s — check container';
+}
+
+async function downloadBackup() {
+  const resultEl = document.getElementById('backup-result');
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Preparing…';
+  try {
+    const resp = await fetch('/api/backup', { headers: _getSecretHeaders() });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename="([^"]+)"/);
+    a.download = match ? match[1] : 'gwless-backup.zip';
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+    resultEl.className = 'test-result ok';
+    resultEl.textContent = '✓ Downloaded';
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
+  }
+}
+
+async function restoreBackup() {
+  const fileInput = document.getElementById('restore-file');
+  const resultEl = document.getElementById('restore-result');
+  if (!fileInput.files.length) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ No file selected';
+    return;
+  }
+  if (!confirm('Restore this backup? Current settings and history will be overwritten.')) return;
+  resultEl.className = 'test-result busy';
+  resultEl.textContent = 'Restoring…';
+  try {
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    const resp = await fetch('/api/restore', {
+      method: 'POST',
+      headers: _getSecretHeaders(),
+      body: fd,
+    });
+    if (!resp.ok) {
+      const d = await resp.json().catch(() => ({}));
+      throw new Error(d.detail || 'HTTP ' + resp.status);
+    }
+    const d = await resp.json();
+    resultEl.className = 'test-result ok';
+    resultEl.textContent = '✓ Restored: ' + d.restored.join(', ');
+    setTimeout(() => { closeSettings(); openSettings(); }, 900);
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = '✗ ' + e.message;
+  }
 }
 
 async function checkSetupRequired() {

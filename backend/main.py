@@ -6,18 +6,21 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import io
 import json
 import logging
 import os
 import subprocess
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -744,6 +747,64 @@ async def test_unifi_stream(body: Optional[UniFiConfig] = None):
         host = f"https://{host}:{cfg.get('port', 443)}"
     merged = {**cfg, "host": host}
     return _make_sse_response(lambda log_fn: UniFiClient(merged).diagnose(log_fn))
+
+
+# ---------------------------------------------------------------------------
+# Backup / restore
+# ---------------------------------------------------------------------------
+
+@app.get("/api/backup", dependencies=[Depends(_require_secret)])
+async def backup_download():
+    """Create a ZIP of config.yaml + history.db and return as file download."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        cfg_path = _config_path()
+        if cfg_path.exists():
+            zf.write(cfg_path, "config.yaml")
+        db_path = Path(__file__).parent.parent / "history.db"
+        if db_path.exists():
+            zf.write(db_path, "history.db")
+    buf.seek(0)
+    date_str = datetime.now().strftime("%Y%m%d-%H%M")
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="gwless-backup-{date_str}.zip"'},
+    )
+
+
+@app.post("/api/restore", dependencies=[Depends(_require_secret)])
+async def backup_restore(file: UploadFile = File(...)):
+    """Accept a backup ZIP, restore config.yaml and/or history.db from it."""
+    data = await file.read()
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise HTTPException(400, "Not a valid zip file")
+
+    names = zf.namelist()
+    if "config.yaml" not in names and "history.db" not in names:
+        raise HTTPException(400, "Zip does not contain config.yaml or history.db")
+
+    if "config.yaml" in names:
+        cfg_path = _config_path()
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        cfg_path.write_bytes(zf.read("config.yaml"))
+        cfg_path.chmod(0o600)
+        global CONFIG
+        with open(cfg_path) as f:
+            CONFIG.clear()
+            CONFIG.update(yaml.safe_load(f) or {})
+        _rebuild_caches()
+        logger.info("Config restored from backup")
+
+    if "history.db" in names:
+        db_path = Path(__file__).parent.parent / "history.db"
+        db_path.write_bytes(zf.read("history.db"))
+        logger.info("history.db restored from backup")
+
+    restored = [n for n in ["config.yaml", "history.db"] if n in names]
+    return {"ok": True, "restored": restored}
 
 
 # ---------------------------------------------------------------------------
