@@ -513,6 +513,125 @@ def create_static_reservation(config: dict, server_name: str, mac: str, ip: str,
     return _parse_sophos_status(doc)
 
 
+def remove_static_reservation(config: dict, server_name: str, mac: str) -> dict:
+    """
+    Remove a static DHCP reservation from the named DHCP server via Sophos XML API.
+
+    Fetches the current config, filters out the matching MAC, then sends
+    the complete server object back via <Set>.
+
+    Returns {"ok": True} or {"ok": False, "message": "..."}.
+    """
+    host = config.get("host", "")
+    if not host:
+        raise ValueError("Sophos host is not configured.")
+    url = _api_url(config)
+    verify = config.get("verify_ssl", False)
+    post_kwargs = dict(
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        verify=verify,
+        timeout=15,
+    )
+    username = xml_escape(config.get("username", ""))
+    password = xml_escape(config.get("api_password") or config.get("password", ""))
+
+    # ── Step 1: fetch current DHCPServer config ──────────────────────────────
+    get_payload = _build_payload(config, "DHCPServer")
+    resp = requests.post(url, data={"reqxml": get_payload}, **post_kwargs)
+    resp.raise_for_status()
+    get_doc = xmltodict.parse(resp.text)
+    servers_raw = get_doc.get("Response", {}).get("DHCPServer", {})
+    server_list = servers_raw if isinstance(servers_raw, list) else [servers_raw]
+
+    target = None
+    for srv in server_list:
+        if srv and srv.get("Name") == server_name:
+            target = srv
+            break
+    if target is None:
+        return {"ok": False, "message": f"DHCP server '{server_name}' not found on Sophos"}
+
+    # ── Step 2: extract required fields ──────────────────────────────────────
+    def _x(val: Any) -> str:
+        return xml_escape(str(val)) if val else ""
+
+    iface      = _x(target.get("Interface"))
+    subnet     = _x(target.get("SubnetMask") or target.get("Network"))
+    gateway    = _x(target.get("Gateway") or target.get("GatewayIP"))
+    dns1       = _x(target.get("PrimaryDNSServer") or target.get("DNS1"))
+    dns2       = _x(target.get("SecondaryDNSServer") or target.get("DNS2"))
+    default_lt = _x(target.get("DefaultLeaseTime") or "86400")
+    max_lt     = _x(target.get("MaxLeaseTime") or target.get("DefaultLeaseTime") or "86400")
+    sname      = _x(server_name)
+
+    ip_range    = target.get("IPLease") or target.get("IPRange") or target.get("Range") or {}
+    range_start = _x(ip_range.get("StartIP") or ip_range.get("From")) if isinstance(ip_range, dict) else ""
+    range_end   = _x(ip_range.get("EndIP")   or ip_range.get("To"))   if isinstance(ip_range, dict) else ""
+
+    # ── Step 3: rebuild static leases, skipping the target MAC ───────────────
+    norm_mac = mac.lower()
+    hosts_xml = ""
+    found = False
+    for res in _extract_reservations(target):
+        if not res:
+            continue
+        h_mac = (res.get("MACAddress") or res.get("MAC", "")).lower()
+        if h_mac == norm_mac:
+            found = True
+            continue  # skip — this is the one to remove
+        h_ip   = _x(res.get("IPAddress") or res.get("IP"))
+        h_name = _x(res.get("HostName")  or res.get("Name") or res.get("Hostname"))
+        hosts_xml += (
+            f"<Host>"
+            f"<MACAddress>{_x(h_mac)}</MACAddress>"
+            f"<IPAddress>{h_ip}</IPAddress>"
+            f"<HostName>{h_name}</HostName>"
+            f"</Host>"
+        )
+
+    if not found:
+        return {"ok": False, "message": f"No static reservation for {mac} found on '{server_name}'"}
+
+    # ── Step 4: build optional XML fragments ─────────────────────────────────
+    range_xml = (
+        f"<IPLease><StartIP>{range_start}</StartIP><EndIP>{range_end}</EndIP></IPLease>"
+        if range_start and range_end else ""
+    )
+    dns_xml = ""
+    if dns1:
+        dns_xml += f"<PrimaryDNSServer>{dns1}</PrimaryDNSServer>"
+    if dns2:
+        dns_xml += f"<SecondaryDNSServer>{dns2}</SecondaryDNSServer>"
+
+    static_xml = f"<StaticLease>{hosts_xml}</StaticLease>" if hosts_xml else ""
+
+    # ── Step 5: send complete Set payload ────────────────────────────────────
+    set_payload = (
+        f"<Request>"
+        f"<Login><Username>{username}</Username><Password>{password}</Password></Login>"
+        f"<Set>"
+        f"<DHCPServer>"
+        f"<Name>{sname}</Name>"
+        f"<Interface>{iface}</Interface>"
+        f"<Gateway>{gateway}</Gateway>"
+        f"<SubnetMask>{subnet}</SubnetMask>"
+        f"{range_xml}"
+        f"{dns_xml}"
+        f"<DefaultLeaseTime>{default_lt}</DefaultLeaseTime>"
+        f"<MaxLeaseTime>{max_lt}</MaxLeaseTime>"
+        f"{static_xml}"
+        f"</DHCPServer>"
+        f"</Set>"
+        f"</Request>"
+    )
+
+    resp = requests.post(url, data={"reqxml": set_payload}, **post_kwargs)
+    resp.raise_for_status()
+    doc = xmltodict.parse(resp.text)
+    logger.debug("Sophos Remove/DHCPServer response: %s", resp.text)
+    return _parse_sophos_status(doc)
+
+
 def diagnose_ssh(config: dict, log_fn=None) -> None:
     """
     Diagnostic version of fetch_dhcp_leases_ssh that reports progress via log_fn(msg, level).

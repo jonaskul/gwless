@@ -654,6 +654,11 @@ class ReservePayload(BaseModel):
     hostname: str = ""
 
 
+class UnreservePayload(BaseModel):
+    server_name: str
+    mac: str
+
+
 MASKED_SENTINEL = "••••••••"
 
 
@@ -892,6 +897,24 @@ async def sophos_dhcp_reserve(body: ReservePayload):
         result = await loop.run_in_executor(
             _test_executor,
             lambda: create_static_reservation(cfg, body.server_name, body.mac, body.ip, body.hostname)
+        )
+        if result.get("ok"):
+            _invalidate_caches()
+        return result
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+@app.post("/api/sophos/dhcp/unreserve", dependencies=[Depends(_require_secret)])
+async def sophos_dhcp_unreserve(body: UnreservePayload):
+    """Remove a static DHCP reservation from the Sophos firewall."""
+    from .sophos import remove_static_reservation
+    cfg = dict(CONFIG.get("sophos", {}))
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _test_executor,
+            lambda: remove_static_reservation(cfg, body.server_name, body.mac)
         )
         if result.get("ok"):
             _invalidate_caches()
