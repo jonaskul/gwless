@@ -1,3 +1,7 @@
+## v0.3.5 — 2026-04-07
+
+- feat: version check in update.sh before downloading
+
 ## v0.3.4 — 2026-04-07
 
 - fix: import Body from fastapi for set_device_name endpoint
