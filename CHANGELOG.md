@@ -1,3 +1,7 @@
+## v0.2.17 — 2026-04-07
+
+- fix: use btn-test class for restart service button to match settings style
+
 ## v0.2.16 — 2026-04-07
 
 - fix: correct IPLease format and sanitize hostnames for Sophos Set
