@@ -373,6 +373,58 @@ def fetch_dhcp_server_config(config: dict) -> dict:
     return {"servers": servers, "static_entries": static_entries}
 
 
+def create_static_reservation(config: dict, server_name: str, mac: str, ip: str, hostname: str) -> dict:
+    """
+    Add a static DHCP reservation to the named DHCP server via Sophos XML API.
+    Returns {"ok": True} or {"ok": False, "message": "..."}.
+    """
+    host = config.get("host", "")
+    if not host:
+        raise ValueError("Sophos host is not configured.")
+    url = _api_url(config)
+    username = xml_escape(config.get("username", ""))
+    password = xml_escape(config.get("api_password") or config.get("password", ""))
+    sname = xml_escape(server_name)
+    smac  = xml_escape(mac)
+    sip   = xml_escape(ip)
+    shost = xml_escape(hostname)
+    payload = (
+        f"<Request>"
+        f"<Login><Username>{username}</Username><Password>{password}</Password></Login>"
+        f"<Set operation=\"add\">"
+        f"<DHCPServer>"
+        f"<Name>{sname}</Name>"
+        f"<StaticLease><Host>"
+        f"<MACAddress>{smac}</MACAddress>"
+        f"<IPAddress>{sip}</IPAddress>"
+        f"<HostName>{shost}</HostName>"
+        f"</Host></StaticLease>"
+        f"</DHCPServer>"
+        f"</Set>"
+        f"</Request>"
+    )
+    resp = requests.post(
+        url,
+        data={"reqxml": payload},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        verify=config.get("verify_ssl", False),
+        timeout=15,
+    )
+    resp.raise_for_status()
+    doc = xmltodict.parse(resp.text)
+    # Sophos returns <Response><DHCPServer><Status code="200">...
+    status = doc.get("Response", {}).get("DHCPServer", {})
+    if isinstance(status, dict):
+        code = status.get("Status", {})
+        if isinstance(code, dict):
+            code_val = code.get("@code", "")
+            msg = code.get("#text", "")
+            if str(code_val) == "200":
+                return {"ok": True}
+            return {"ok": False, "message": msg or f"Sophos returned code {code_val}"}
+    return {"ok": True}  # treat unknown successful HTTP as ok
+
+
 def diagnose_ssh(config: dict, log_fn=None) -> None:
     """
     Diagnostic version of fetch_dhcp_leases_ssh that reports progress via log_fn(msg, level).

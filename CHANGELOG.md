@@ -1,3 +1,7 @@
+## v0.2.4 — 2026-04-07
+
+- feat: "Make static" button in device popover — create Sophos DHCP reservation from the dashboard
+
 ## v0.2.3 — 2026-04-07
 
 - feat: pause auto-refresh when browser tab is hidden

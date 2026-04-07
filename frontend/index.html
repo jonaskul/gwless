@@ -464,6 +464,25 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 .copy-btn:hover { color: var(--accent); border-color: var(--accent); }
 .copy-btn.copied { color: var(--green); border-color: var(--green); }
 
+.panel-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.make-static-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.make-static-btn:hover { border-color: var(--accent); color: var(--accent); }
+.make-static-btn:disabled { opacity: 0.5; cursor: default; }
+.make-static-status { font-size: 12px; color: var(--text-muted); }
+
 /* ── Loading spinner ── */
 #loading {
   display: none;
@@ -1729,6 +1748,7 @@ function buildPanelContent(c) {
   // Sophos section
   if (c.sophos) {
     const s = c.sophos;
+    const showMakeStatic = c.lease_type === 'dynamic' && s.mac && s.ip && s.scope_name;
     html += `<div class="panel-section">
       <div class="panel-section-title">Sophos DHCP</div>
       ${kvRow('IP Address',   s.ip || '—', true)}
@@ -1738,6 +1758,10 @@ function buildPanelContent(c) {
       ${kvRow('Scope',        s.scope_name || s.scope || '—', false)}
       ${kvRow('Lease Start',  s.lease_start || '—', false)}
       ${kvRow('Lease End',    s.lease_end || '—', false)}
+      ${showMakeStatic ? `<div class="panel-action">
+        <button class="make-static-btn" data-mac="${esc(s.mac)}" data-ip="${esc(s.ip)}" data-hostname="${esc(s.hostname||'')}" data-scope="${esc(s.scope_name)}">⚓ Make static</button>
+        <span class="make-static-status"></span>
+      </div>` : ''}
     </div>`;
   }
 
@@ -1984,6 +2008,38 @@ function initEvents() {
       closePanel();
     }
   }, true);
+
+  // "Make static" button inside popover (delegated)
+  document.getElementById('popover-content').addEventListener('click', async e => {
+    const btn = e.target.closest('.make-static-btn');
+    if (!btn) return;
+    const { mac, ip, hostname, scope } = btn.dataset;
+    const statusEl = btn.closest('.panel-action').querySelector('.make-static-status');
+    btn.disabled = true;
+    statusEl.textContent = 'Saving…';
+    statusEl.style.color = 'var(--text-muted)';
+    try {
+      const res = await fetch('/api/sophos/dhcp/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', ..._getSecretHeaders()},
+        body: JSON.stringify({ server_name: scope, mac, ip, hostname })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        statusEl.style.color = 'var(--green)';
+        statusEl.textContent = '✓ Reserved';
+        btn.remove();
+      } else {
+        statusEl.style.color = 'var(--red)';
+        statusEl.textContent = data.message || 'Failed';
+        btn.disabled = false;
+      }
+    } catch {
+      statusEl.style.color = 'var(--red)';
+      statusEl.textContent = 'Network error';
+      btn.disabled = false;
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

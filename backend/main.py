@@ -647,6 +647,13 @@ class ConfigPayload(BaseModel):
     syslog: SyslogConfig = SyslogConfig()
 
 
+class ReservePayload(BaseModel):
+    server_name: str
+    mac: str
+    ip: str
+    hostname: str = ""
+
+
 MASKED_SENTINEL = "••••••••"
 
 
@@ -873,6 +880,24 @@ async def test_sophos_api_stream(body: Optional[SophosConfig] = None):
     from .sophos import diagnose_api
     cfg = _resolve_sophos_cfg(body)
     return _make_sse_response(lambda log_fn: diagnose_api(cfg, log_fn))
+
+
+@app.post("/api/sophos/dhcp/reserve", dependencies=[Depends(_require_secret)])
+async def sophos_dhcp_reserve(body: ReservePayload):
+    """Create a static DHCP reservation on the Sophos firewall."""
+    from .sophos import create_static_reservation
+    cfg = dict(CONFIG.get("sophos", {}))
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            _test_executor,
+            lambda: create_static_reservation(cfg, body.server_name, body.mac, body.ip, body.hostname)
+        )
+        if result.get("ok"):
+            _invalidate_caches()
+        return result
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
 
 
 @app.post("/api/test/unifi/stream", dependencies=[Depends(_require_secret)])
