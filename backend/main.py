@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
