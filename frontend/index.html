@@ -911,6 +911,7 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
         <button class="filter" id="ms-lease-type-btn" type="button">All lease types ▾</button>
         <div class="ms-panel" id="ms-lease-type-panel" hidden></div>
       </div>
+      <button id="clear-filters-btn" title="Clear all filters" style="display:none">✕ Clear</button>
       <button id="events-btn" title="Recent events">⏱ Events</button>
       <button id="settings-btn" title="Settings">⚙ Settings</button>
       <button id="signout-btn" title="Sign out" style="display:none">⎋ Sign out</button>
@@ -1407,6 +1408,11 @@ function applyFilters() {
   list.sort((a, b) => sortCompare(a, b, state.sortCol, state.sortDir));
   state.filtered = list;
   renderTable();
+
+  const anyFilter = state.search || state.filterVlans.size || state.filterSources.size ||
+                    state.filterConnTypes.size || state.filterLeaseTypes.size;
+  const clearBtn = document.getElementById('clear-filters-btn');
+  if (clearBtn) clearBtn.style.display = anyFilter ? '' : 'none';
 }
 
 function sortCompare(a, b, col, dir) {
@@ -1673,13 +1679,19 @@ function _initMultiSelect(btnId, panelId, allLabel, getSelected, setSelected) {
   // Prevent clicks inside panel (checkboxes) from bubbling to document close handler
   panel.addEventListener('click', e => e.stopPropagation());
 
-  return { rebuild };
+  function reset() {
+    setSelected(new Set());
+    panel.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+    _updateLabel();
+  }
+
+  return { rebuild, reset };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VLAN filter population
 // ─────────────────────────────────────────────────────────────────────────────
-let _msVlan = null;
+let _msVlan = null, _msSrc = null, _msConnType = null, _msLeaseType = null;
 
 function updateVlanFilter() {
   if (!_msVlan) return;
@@ -2014,33 +2026,47 @@ function initEvents() {
     () => state.filterVlans,
     sel => { state.filterVlans = sel; }
   );
-  _initMultiSelect(
+  _msSrc = _initMultiSelect(
     'ms-source-btn', 'ms-source-panel', 'All sources',
     () => state.filterSources,
     sel => { state.filterSources = sel; }
-  ).rebuild([
+  );
+  _msSrc.rebuild([
     { value: 'both',        label: 'Matched (both)' },
     { value: 'sophos_only', label: 'Sophos only'    },
     { value: 'unifi_only',  label: 'UniFi only'     },
   ]);
-  _initMultiSelect(
+  _msConnType = _initMultiSelect(
     'ms-status-btn', 'ms-status-panel', 'All connection types',
     () => state.filterConnTypes,
     sel => { state.filterConnTypes = sel; }
-  ).rebuild([
+  );
+  _msConnType.rebuild([
     { value: 'wired',    label: 'Wired'         },
     { value: 'wireless', label: 'Wireless'       },
     { value: 'unknown',  label: 'No UniFi data'  },
   ]);
-  _initMultiSelect(
+  _msLeaseType = _initMultiSelect(
     'ms-lease-type-btn', 'ms-lease-type-panel', 'All lease types',
     () => state.filterLeaseTypes,
     sel => { state.filterLeaseTypes = sel; }
-  ).rebuild([
+  );
+  _msLeaseType.rebuild([
     { value: 'static',  label: 'Static'  },
     { value: 'dynamic', label: 'Dynamic' },
     { value: 'none',    label: 'No lease (UniFi only)' },
   ]);
+
+  // Clear all filters
+  document.getElementById('clear-filters-btn').addEventListener('click', () => {
+    state.search = '';
+    document.getElementById('search').value = '';
+    _msVlan.reset();
+    _msSrc.reset();
+    _msConnType.reset();
+    _msLeaseType.reset();
+    applyFilters();
+  });
 
   // Manual refresh
   document.getElementById('refresh-btn').addEventListener('click', () => {
