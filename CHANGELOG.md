@@ -1,3 +1,7 @@
+## v0.2.9 — 2026-04-07
+
+- feat: restart service button in App settings tab
+
 ## v0.2.8 — 2026-04-07
 
 - fix: remove invalid operation="add" attribute from Sophos Set request
