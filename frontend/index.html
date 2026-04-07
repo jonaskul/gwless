@@ -1748,7 +1748,7 @@ function buildPanelContent(c) {
   // Sophos section
   if (c.sophos) {
     const s = c.sophos;
-    const showMakeStatic = c.lease_type === 'dynamic' && s.mac && s.ip && s.scope_name;
+    const showMakeStatic = s.lease_type === 'dynamic' && s.mac && s.ip && s.scope_name;
     html += `<div class="panel-section">
       <div class="panel-section-title">Sophos DHCP</div>
       ${kvRow('IP Address',   s.ip || '—', true)}
