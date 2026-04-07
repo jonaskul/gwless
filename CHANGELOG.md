@@ -1,3 +1,7 @@
+## v0.2.2 — 2026-04-07
+
+- docs: add Claude Code disclaimer to README
+
 ## v0.2.1 — 2026-04-07
 
 - fix: sign-out button style + version shown immediately after login
