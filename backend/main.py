@@ -58,7 +58,6 @@ def _load_config() -> dict:
     candidates = [
         Path("/opt/gwless/config.yaml"),
         Path("config.yaml"),
-        Path("config.yaml.example"),
     ]
     for path in candidates:
         if path.exists():
@@ -66,7 +65,8 @@ def _load_config() -> dict:
                 cfg = yaml.safe_load(f) or {}
             logger.info("Loaded config from %s", path)
             return cfg
-    logger.warning("No config.yaml found — starting with empty config")
+    logger.warning("No config.yaml found at %s — starting with empty config",
+                   " or ".join(str(p) for p in candidates))
     return {}
 
 

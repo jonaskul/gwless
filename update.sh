@@ -6,7 +6,17 @@ set -euo pipefail
 GWLESS_REPO="https://github.com/jonaskul/gwless"
 GWLESS_BRANCH="main"
 GWLESS_DIR="/opt/gwless"
+CONFIG_FILE="${GWLESS_DIR}/config.yaml"
+CONFIG_BACKUP="/tmp/gwless-config.yaml.bak"
 LOG_FILE="/tmp/gwless-update.log"
+
+# ── Backup config before touching anything ────────────────────────────────────
+if [ -f "$CONFIG_FILE" ]; then
+    cp "$CONFIG_FILE" "$CONFIG_BACKUP"
+    echo "[pre-update] Config backed up to $CONFIG_BACKUP"
+else
+    echo "[pre-update] WARNING: $CONFIG_FILE does not exist before update"
+fi
 
 echo "[1/3] Downloading latest code from GitHub..."
 curl -fsSL "${GWLESS_REPO}/archive/refs/heads/${GWLESS_BRANCH}.tar.gz" \
@@ -16,7 +26,14 @@ curl -fsSL "${GWLESS_REPO}/archive/refs/heads/${GWLESS_BRANCH}.tar.gz" \
     --exclude='*/history.db' \
     -C "${GWLESS_DIR}"
 
-# Verify the downloaded code parses correctly before restarting
+# ── Restore config (safety net in case tar somehow overwrote it) ──────────────
+if [ -f "$CONFIG_BACKUP" ]; then
+    cp "$CONFIG_BACKUP" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    echo "[post-extract] Config restored from backup"
+fi
+
+# ── Verify syntax before restarting ──────────────────────────────────────────
 python3 -c "import py_compile; py_compile.compile('${GWLESS_DIR}/backend/main.py', doraise=True)" \
   || { echo "ERROR: syntax error in backend/main.py — aborting restart"; exit 1; }
 
@@ -36,10 +53,8 @@ nohup bash -c '
       exit 0
     fi
   done
-  # Service did not recover — log the error but do NOT reboot
   echo "[gwless] Service failed to start after update:" >> '"$LOG_FILE"'
   journalctl -u gwless -n 30 --no-pager >> '"$LOG_FILE"' 2>&1
-  echo "[gwless] See '"$LOG_FILE"' for details" >> '"$LOG_FILE"'
 ' >> "$LOG_FILE" 2>&1 &
 
 echo "Done. Service restarting in ~3 seconds."
