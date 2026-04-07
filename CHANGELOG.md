@@ -1,3 +1,7 @@
+## v0.1.12 — 2026-04-07
+
+- fix: move global CONFIG declaration before first use in backup_restore
+
 ## v0.1.11 — 2026-04-07
 
 - feat: Apply/Save buttons in settings + include-passwords option in restore
