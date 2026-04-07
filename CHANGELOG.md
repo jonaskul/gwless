@@ -1,6 +1,17 @@
-## v0.1.29 — 2026-04-07
+## v0.2.0 — 2026-04-07
 
-- feat: add sign-out button to header
+- feat: optional login page with session auth (24h httpOnly cookie)
+- feat: sign-out button in header (visible when auth enabled)
+- perf: persistent SQLite connection, WAL mode, hourly event pruning
+- perf: reuse authenticated UniFi client across cache refreshes
+- fix: XSS hardening — escape event type fallbacks in history/events lists
+- fix: security response headers (X-Content-Type-Options, X-Frame-Options, X-XSS-Protection)
+- fix: switch OUI source to IEEE CSV (reliable, no auth required)
+- fix: OUI update shows actual error message in UI
+- fix: version in header shown even when auth is enabled
+- feat: cleaner App settings tab with distinct sections
+- feat: manual OUI update button in settings
+- docs: README updated with login page, auth API, config table
 
 ## v0.1.28 — 2026-04-07
 
