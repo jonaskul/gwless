@@ -1,3 +1,7 @@
+## v0.2.19 — 2026-04-07
+
+- fix: prevent static reservation within dynamic DHCP range
+
 ## v0.2.18 — 2026-04-07
 
 - fix: replace nonexistent _invalidate_caches() with correct cache invalidation
