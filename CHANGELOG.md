@@ -1,3 +1,7 @@
+## v0.1.13 — 2026-04-07
+
+- feat: include-passwords toggle for backup download
+
 ## v0.1.12 — 2026-04-07
 
 - fix: move global CONFIG declaration before first use in backup_restore
