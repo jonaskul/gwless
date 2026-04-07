@@ -1,3 +1,7 @@
+## v0.1.26 — 2026-04-07
+
+- feat: optional login page with session auth
+
 ## v0.1.25 — 2026-04-07
 
 - perf: persistent SQLite connection, WAL mode, periodic pruning, reuse UniFi client
