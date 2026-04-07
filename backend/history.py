@@ -71,6 +71,12 @@ def init_db() -> None:
                 lease_time    INTEGER NOT NULL DEFAULT 86400
             );
         """)
+        # Migration: add custom_name column if not present (SQLite has no IF NOT EXISTS for columns)
+        try:
+            db.execute("ALTER TABLE devices ADD COLUMN custom_name TEXT")
+            db.commit()
+        except Exception:
+            pass  # column already exists
         _prune(db)
     logger.info("History DB initialised at %s", DB_PATH)
 
@@ -208,6 +214,28 @@ def get_device(mac: str) -> dict:
         "device": dict(row) if row else None,
         "events": [dict(e) for e in events],
     }
+
+
+def set_custom_name(mac: str, name: str) -> None:
+    """Set (or clear) a custom display name for a device MAC."""
+    with _lock:
+        db = _conn()
+        db.execute(
+            "INSERT INTO devices (mac, first_seen, last_seen, custom_name) "
+            "VALUES (?, ?, ?, ?) ON CONFLICT(mac) DO UPDATE SET custom_name=excluded.custom_name",
+            (mac, int(time.time()), int(time.time()), name or None),
+        )
+        db.commit()
+
+
+def get_all_custom_names() -> dict:
+    """Return {mac: custom_name} for all devices that have a custom name set."""
+    with _lock:
+        db = _conn()
+        rows = db.execute(
+            "SELECT mac, custom_name FROM devices WHERE custom_name IS NOT NULL AND custom_name != ''"
+        ).fetchall()
+    return {r["mac"]: r["custom_name"] for r in rows}
 
 
 def get_recent_events(limit: int = 100) -> list[dict]:

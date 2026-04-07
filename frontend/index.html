@@ -1499,7 +1499,13 @@ function buildRow(c) {
   const connection = connectionLabel(c);
 
   tr.innerHTML = `
-    <td class="hostname" title="${esc(c.hostname || c.mac)}">${c.hostname ? esc(c.hostname) : `<span style="color:var(--text-muted);font-size:11px">${esc(c.mac)}</span>`}</td>
+    <td class="hostname" title="${esc(c.custom_name || c.hostname || c.mac)}">${
+      c.custom_name
+        ? `<span style="color:var(--accent)">${esc(c.custom_name)}</span>`
+        : c.hostname
+          ? esc(c.hostname)
+          : `<span style="color:var(--text-muted);font-size:11px">${esc(c.mac)}</span>`
+    }</td>
     <td class="mono">${esc(c.ip || '—')}</td>
     <td class="mono" style="font-size:11px">${esc(c.mac || '—')}</td>
     <td style="color:var(--text-muted);max-width:130px;overflow:hidden;text-overflow:ellipsis" title="${esc(c.vendor || '')}">${esc(c.vendor || '—')}</td>
@@ -1709,7 +1715,7 @@ function openPanel(c, e) {
     r.classList.toggle('selected', r.dataset.mac === c.mac);
   });
 
-  document.getElementById('popover-title').textContent = c.hostname || c.mac || '—';
+  document.getElementById('popover-title').textContent = c.custom_name || c.hostname || c.mac || '—';
   document.getElementById('popover-subtitle').innerHTML =
     `<span class="mono">${esc(c.mac || '')}</span> &middot; ${sourceLabel(c.source)}`;
 
@@ -1784,6 +1790,21 @@ function buildPanelContent(c) {
   // Overview section
   html += `<div class="panel-section">
     <div class="panel-section-title">Overview</div>
+    <div class="panel-row">
+      <span class="panel-label">Display name</span>
+      <span class="panel-value">
+        <span class="custom-name-text" style="color:${c.custom_name ? 'var(--accent)' : 'var(--text-muted)'}">${esc(c.custom_name || 'Not set')}</span>
+        <button class="custom-name-edit-btn" data-mac="${esc(c.mac)}" title="Edit display name" style="margin-left:6px;font-size:11px;padding:1px 6px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer">✎</button>
+      </span>
+    </div>
+    <div class="custom-name-form" style="display:none;margin:4px 0 6px;display:none">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <input class="custom-name-input" type="text" value="${esc(c.custom_name||'')}" placeholder="Custom display name…" maxlength="64" style="width:160px;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">
+        <button class="custom-name-save" style="font-size:12px;padding:3px 10px;border:1px solid var(--accent);border-radius:4px;background:none;color:var(--accent);cursor:pointer">Save</button>
+        <button class="custom-name-clear" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer">Clear</button>
+      </div>
+      <span class="custom-name-status" style="font-size:11px;color:var(--text-muted);margin-top:3px;display:block"></span>
+    </div>
     ${kvRow('Status',   c.online ? '<span style="color:var(--green)">● Online</span>' : '<span style="color:var(--gray)">● Lease only</span>', false, true)}
     ${kvRow('Source',   sourceLabel(c.source), false)}
     ${kvRow('Vendor',   c.vendor || '—', false)}
@@ -2093,6 +2114,81 @@ function initEvents() {
       closePanel();
     }
   }, true);
+
+  // Custom display name — toggle edit form
+  document.getElementById('popover-content').addEventListener('click', e => {
+    if (!e.target.closest('.custom-name-edit-btn')) return;
+    const section = e.target.closest('.panel-section');
+    section.querySelector('.custom-name-form').style.display = '';
+    e.target.style.display = 'none';
+  });
+
+  // Custom display name — save
+  document.getElementById('popover-content').addEventListener('click', async e => {
+    if (!e.target.closest('.custom-name-save')) return;
+    const section = e.target.closest('.panel-section');
+    const mac = section.querySelector('.custom-name-edit-btn').dataset.mac;
+    const name = section.querySelector('.custom-name-input').value.trim();
+    const statusEl = section.querySelector('.custom-name-status');
+    e.target.disabled = true;
+    statusEl.textContent = 'Saving…';
+    try {
+      const r = await fetch(`/api/device/${encodeURIComponent(mac)}/name`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name}),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        const c = state.clients.find(x => x.mac === mac);
+        if (c) {
+          c.custom_name = name || null;
+          renderTable();
+          document.getElementById('popover-title').textContent = c.custom_name || c.hostname || c.mac || '—';
+        }
+        section.querySelector('.custom-name-text').textContent = name || 'Not set';
+        section.querySelector('.custom-name-text').style.color = name ? 'var(--accent)' : 'var(--text-muted)';
+        section.querySelector('.custom-name-form').style.display = 'none';
+        section.querySelector('.custom-name-edit-btn').style.display = '';
+        statusEl.textContent = '';
+      } else {
+        statusEl.textContent = data.message || 'Error';
+        statusEl.style.color = 'var(--red)';
+      }
+    } catch {
+      statusEl.textContent = 'Request failed';
+      statusEl.style.color = 'var(--red)';
+    }
+    e.target.disabled = false;
+  });
+
+  // Custom display name — clear
+  document.getElementById('popover-content').addEventListener('click', async e => {
+    if (!e.target.closest('.custom-name-clear')) return;
+    const section = e.target.closest('.panel-section');
+    const mac = section.querySelector('.custom-name-edit-btn').dataset.mac;
+    const statusEl = section.querySelector('.custom-name-status');
+    e.target.disabled = true;
+    try {
+      await fetch(`/api/device/${encodeURIComponent(mac)}/name`, {method: 'DELETE'});
+      const c = state.clients.find(x => x.mac === mac);
+      if (c) {
+        c.custom_name = null;
+        renderTable();
+        document.getElementById('popover-title').textContent = c.hostname || c.mac || '—';
+      }
+      section.querySelector('.custom-name-input').value = '';
+      section.querySelector('.custom-name-text').textContent = 'Not set';
+      section.querySelector('.custom-name-text').style.color = 'var(--text-muted)';
+      section.querySelector('.custom-name-form').style.display = 'none';
+      section.querySelector('.custom-name-edit-btn').style.display = '';
+      statusEl.textContent = '';
+    } catch {
+      statusEl.textContent = 'Request failed';
+      statusEl.style.color = 'var(--red)';
+    }
+    e.target.disabled = false;
+  });
 
   // "Make static" — click button to expand form
   document.getElementById('popover-content').addEventListener('click', e => {

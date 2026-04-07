@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .cache import TTLCache
-from .history import init_db, record_seen, get_device, get_recent_events
+from .history import init_db, record_seen, get_device, get_recent_events, set_custom_name, get_all_custom_names
 from .merger import merge_clients, normalize_mac
 from .oui import lookup as oui_lookup, ensure_oui_db, download_oui_db
 from .syslog_server import SyslogReceiver
@@ -269,12 +269,14 @@ def _get_merged_clients() -> list[dict]:
         sophos_servers=sophos_cfg.get("servers", []),
     )
 
+    custom_names = get_all_custom_names()
     for c in merged:
         mac = c.get("mac", "")
         if c.get("unifi") and c["unifi"].get("oui"):
             c["vendor"] = c["unifi"]["oui"]
         else:
             c["vendor"] = oui_lookup(mac)
+        c["custom_name"] = custom_names.get(mac) or None
 
     # Record to history DB only when cache was actually refreshed
     global _history_last_ts
@@ -495,7 +497,8 @@ async def get_clients(
         q_lower = q.lower()
         clients = [
             c for c in clients
-            if q_lower in (c.get("hostname") or "").lower()
+            if q_lower in (c.get("custom_name") or "").lower()
+            or q_lower in (c.get("hostname") or "").lower()
             or q_lower in (c.get("ip")       or "").lower()
             or q_lower in (c.get("mac")      or "").lower()
             or q_lower in (c.get("vendor")   or "").lower()
@@ -1037,6 +1040,23 @@ async def history_device(mac: str):
 async def history_events(limit: int = Query(100, le=500)):
     """Return the most recent events across all devices."""
     return {"events": get_recent_events(limit)}
+
+
+@app.patch("/api/device/{mac}/name", dependencies=[Depends(_require_secret)])
+async def set_device_name(mac: str, body: dict = Body(...)):
+    """Set a custom display name for a device."""
+    name = (body.get("name") or "").strip()[:64]
+    set_custom_name(normalize_mac(mac), name)
+    _cache_leases.invalidate()
+    return {"ok": True}
+
+
+@app.delete("/api/device/{mac}/name", dependencies=[Depends(_require_secret)])
+async def clear_device_name(mac: str):
+    """Clear the custom display name for a device."""
+    set_custom_name(normalize_mac(mac), "")
+    _cache_leases.invalidate()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
