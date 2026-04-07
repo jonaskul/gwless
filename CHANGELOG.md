@@ -1,3 +1,27 @@
+## v0.3.0 — 2026-04-07
+
+### Static DHCP Reservation Management
+- Create static DHCP reservations directly from the device popover ("⚓ Make static")
+- Remove static reservations with one click ("✕ Remove static")
+- Expandable form pre-filled with current IP and hostname
+- Real-time IP validation — warns if IP is inside the dynamic range or already reserved
+- Static reservations always take priority over dynamic leases in the merged view
+- "Static" shown in the Lease Expires column for static entries
+
+### Filters & UI
+- New lease type filter (Static / Dynamic / No lease)
+- Connection type filter replaces the redundant Status filter (Wired / Wireless / No UniFi data)
+- "✕ Clear" button resets all filters and search in one click — greyed out when nothing is active
+- Scope name resolved for syslog/dynamic leases via subnet prefix lookup
+
+### App Settings
+- Restart service button next to Log Level in App settings tab
+
+### Docs
+- Added Requirements section (Proxmox PVE 8, Sophos XGS SFOS 22, UniFi v8+)
+- Expanded Manual Setup section for non-Proxmox installs (systemd service instructions)
+- Syslog setup updated with exact Sophos field values (Facility, Severity, Format)
+
 ## v0.2.30 — 2026-04-07
 
 - docs: update syslog setup with correct Sophos field values
