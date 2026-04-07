@@ -1,3 +1,7 @@
+## v0.2.23 — 2026-04-07
+
+- fix: translate IP validation warnings to English
+
 ## v0.2.22 — 2026-04-07
 
 - feat: real-time IP validation in Make static form
