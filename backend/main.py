@@ -533,6 +533,19 @@ async def get_scopes():
     leases = _get_sophos_leases()
     from .sophos import get_scopes_summary
     scopes = get_scopes_summary(sophos_cfg.get("servers", []), leases)
+
+    # Group static entries by scope so the modal doesn't rely on search-filtered state.clients
+    statics_by_scope: dict = {}
+    for entry in sophos_cfg.get("static_entries", []):
+        sn = entry.get("scope_name", "")
+        statics_by_scope.setdefault(sn, []).append({
+            "mac":      entry.get("mac", ""),
+            "ip":       entry.get("ip", ""),
+            "hostname": entry.get("hostname", ""),
+        })
+    for scope in scopes:
+        scope["statics"] = statics_by_scope.get(scope.get("name", ""), [])
+
     return {"scopes": scopes, "stale": _cache_sophos_cfg.is_stale, "last_updated": _cache_sophos_cfg.last_updated}
 
 

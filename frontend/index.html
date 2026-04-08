@@ -1982,12 +1982,11 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
     scopeInfo = (data.scopes || []).find(s => s.name === scopeName) || null;
   } catch (_) {}
 
-  // Existing static reservations in this scope (sorted by IP)
-  const statics = state.clients
-    .filter(c => c.sophos?.scope_name === scopeName && c.sophos?.lease_type === 'static')
+  // Use scope's own static list — not state.clients, which may be search-filtered
+  const statics = (scopeInfo?.statics || [])
     .sort((a, b) => {
       const toNum = ip => (ip || '0.0.0.0').split('.').reduce((n, o) => (n << 8) + parseInt(o, 10), 0) >>> 0;
-      return toNum(a.sophos.ip) - toNum(b.sophos.ip);
+      return toNum(a.ip) - toNum(b.ip);
     });
 
   const rs = scopeInfo?.range_start || rangeStart || '';
@@ -2012,11 +2011,11 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
           <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">Hostname</th>
           <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">MAC</th>
         </tr></thead>
-        <tbody>${statics.map(c => `
+        <tbody>${statics.map(s => `
           <tr class="dhcp-static-row" style="border-top:1px solid var(--border)">
-            <td class="mono" style="padding:5px 10px;color:var(--accent)">${esc(c.sophos.ip || '—')}</td>
-            <td style="padding:5px 10px">${esc(c.sophos.hostname || c.hostname || '—')}</td>
-            <td class="mono" style="padding:5px 10px;color:var(--text-muted)">${esc(c.mac || '—')}</td>
+            <td class="mono" style="padding:5px 10px;color:var(--accent)">${esc(s.ip || '—')}</td>
+            <td style="padding:5px 10px">${esc(s.hostname || '—')}</td>
+            <td class="mono" style="padding:5px 10px;color:var(--text-muted)">${esc(s.mac || '—')}</td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -2051,11 +2050,10 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
       } catch (_) {}
     }
     if (!warn && ip) {
-      for (const c of state.clients) {
-        if (!c.sophos || c.sophos.lease_type !== 'static') continue;
-        if (c.mac === mac) continue;
-        if ((c.sophos.ip || '') === ip) {
-          warn = `IP ${ip} is already reserved for ${c.sophos.hostname || c.mac}`;
+      for (const s of statics) {
+        if (s.mac === mac) continue;
+        if ((s.ip || '') === ip) {
+          warn = `IP ${ip} is already reserved for ${s.hostname || s.mac}`;
           break;
         }
       }
