@@ -1,3 +1,7 @@
+## v0.3.9 — 2026-04-08
+
+- style: widen DHCP scope modal (640px, taller reservations table)
+
 ## v0.3.8 — 2026-04-08
 
 - fix: static reservations missing in DHCP modal when search is active
