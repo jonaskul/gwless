@@ -243,6 +243,10 @@ def get_recent_events(limit: int = 100) -> list[dict]:
     with _lock:
         db = _conn()
         rows = db.execute(
-            "SELECT * FROM events ORDER BY ts DESC LIMIT ?", (limit,)
+            """SELECT e.*, COALESCE(d.custom_name, d.last_hostname) AS hostname
+               FROM events e
+               LEFT JOIN devices d ON e.mac = d.mac
+               ORDER BY e.ts DESC LIMIT ?""",
+            (limit,),
         ).fetchall()
     return [dict(r) for r in rows]

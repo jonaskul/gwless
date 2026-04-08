@@ -1941,7 +1941,7 @@ function _renderEventsList(el, events) {
     `<div class="event-item" style="grid-template-columns:auto auto auto 1fr">
       <span class="event-ts">${_fmtTs(e.ts)}</span>
       <span class="event-tag event-${e.event}">${_EVENT_LABEL[e.event] || e.event}</span>
-      <span class="mono" style="font-size:11px;color:var(--text-muted)">${esc(e.mac)}</span>
+      <span style="font-size:11px;color:var(--text-muted)"><span class="mono">${esc(e.mac)}</span>${e.hostname ? ` · <span style="opacity:.75">${esc(e.hostname)}</span>` : ''}</span>
       <span class="event-detail">${esc(e.detail || '')}</span>
     </div>`
   ).join('') + '</div>';
