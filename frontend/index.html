@@ -2008,18 +2008,19 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
       <span style="font-size:12px;font-weight:600">Existing static reservations</span>
       <span style="font-size:11px;color:var(--text-muted)">${statics.length} total</span>
     </div>
+    <style>#dhcp-modal .sr-row:hover{background:var(--surface2)}</style>
     ${statics.length ? `
     <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:16px">
-      <div style="max-height:220px;overflow-y:auto;overflow-x:hidden">
+      <div style="max-height:220px;overflow-y:auto">
         <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
-          <colgroup><col style="width:108px"><col><col style="width:128px"></colgroup>
+          <colgroup><col style="width:20%"><col style="width:55%"><col style="width:25%"></colgroup>
           <thead><tr style="background:var(--surface2);position:sticky;top:0;z-index:1">
             <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">IP</th>
             <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">HOSTNAME</th>
             <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">MAC</th>
           </tr></thead>
           <tbody>${statics.map(s => `
-            <tr style="border-top:1px solid var(--border)">
+            <tr class="sr-row" style="border-top:1px solid var(--border)">
               <td class="mono" style="padding:6px 10px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.ip||'—')}</td>
               <td style="padding:6px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hostname||'—')}</td>
               <td class="mono" style="padding:6px 10px;color:var(--text-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.mac||'—')}</td>
@@ -2030,7 +2031,7 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
     </div>` : `<div style="font-size:12px;color:var(--text-muted);padding:6px 0 16px">No static reservations in this scope yet.</div>`}
 
     <div style="border-top:1px solid var(--border);padding-top:14px">
-      <div style="font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:.05em;margin-bottom:10px">NEW RESERVATION</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">New reservation</div>
       <div style="display:grid;grid-template-columns:148px 1fr;gap:10px;margin-bottom:8px">
         <div>
           <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">IP address</label>
