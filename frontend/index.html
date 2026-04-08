@@ -1993,45 +1993,62 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
   const re = scopeInfo?.range_end   || rangeEnd   || '';
 
   body.innerHTML = `
-    <div style="background:var(--surface2);border-radius:6px;padding:10px 12px;font-size:12px;display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin-bottom:14px">
+    <div style="background:var(--surface2);border-radius:8px;padding:12px 14px;font-size:12px;margin-bottom:16px">
       ${scopeInfo ? `
-        <span style="color:var(--text-muted)">Subnet</span><span>${esc(scopeInfo.subnet || '—')}</span>
-        <span style="color:var(--text-muted)">Gateway</span><span>${esc(scopeInfo.gateway || '—')}</span>
-        <span style="color:var(--text-muted)">Dynamic range</span><span class="mono">${esc(rs)} – ${esc(re)}</span>
-        <span style="color:var(--text-muted)">DNS</span><span>${esc([scopeInfo.dns1, scopeInfo.dns2].filter(Boolean).join(', ') || '—')}</span>
-      ` : `<span style="color:var(--text-muted)">Dynamic range</span><span class="mono">${esc(rs)} – ${esc(re)}</span>`}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px">
+        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Subnet</div>${esc(scopeInfo.subnet||'—')}</div>
+        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Gateway</div>${esc(scopeInfo.gateway||'—')}</div>
+        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Dynamic range</div><span class="mono">${esc(rs)} – ${esc(re)}</span></div>
+        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">DNS</div>${esc([scopeInfo.dns1,scopeInfo.dns2].filter(Boolean).join(', ')||'—')}</div>
+      </div>
+      ` : `<div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Dynamic range</div><span class="mono">${esc(rs)} – ${esc(re)}</span>`}
     </div>
 
-    <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Existing static reservations (${statics.length})</div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:12px;font-weight:600">Existing static reservations</span>
+      <span style="font-size:11px;color:var(--text-muted)">${statics.length} total</span>
+    </div>
     ${statics.length ? `
-    <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:14px">
-      <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:var(--surface2)">
-          <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">IP</th>
-          <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">Hostname</th>
-          <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">MAC</th>
-        </tr></thead>
-        <tbody>${statics.map(s => `
-          <tr class="dhcp-static-row" style="border-top:1px solid var(--border)">
-            <td class="mono" style="padding:5px 10px;color:var(--accent)">${esc(s.ip || '—')}</td>
-            <td style="padding:5px 10px">${esc(s.hostname || '—')}</td>
-            <td class="mono" style="padding:5px 10px;color:var(--text-muted)">${esc(s.mac || '—')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">No static reservations yet in this scope.</div>`}
+    <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:16px">
+      <div style="max-height:220px;overflow-y:auto;overflow-x:hidden">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+          <colgroup><col style="width:108px"><col><col style="width:128px"></colgroup>
+          <thead><tr style="background:var(--surface2);position:sticky;top:0;z-index:1">
+            <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">IP</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">HOSTNAME</th>
+            <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">MAC</th>
+          </tr></thead>
+          <tbody>${statics.map(s => `
+            <tr style="border-top:1px solid var(--border)">
+              <td class="mono" style="padding:6px 10px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.ip||'—')}</td>
+              <td style="padding:6px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hostname||'—')}</td>
+              <td class="mono" style="padding:6px 10px;color:var(--text-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.mac||'—')}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : `<div style="font-size:12px;color:var(--text-muted);padding:6px 0 16px">No static reservations in this scope yet.</div>`}
 
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
-      <input id="dhcp-ip-input" type="text" value="${esc(currentIp||'')}" placeholder="IP address" maxlength="15"
-             style="width:140px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
-      <input id="dhcp-hn-input" type="text" value="${esc(currentHostname||'')}" placeholder="Hostname"
-             style="flex:1;min-width:120px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
-    </div>
-    <div id="dhcp-ip-warn" style="display:none;font-size:11px;color:var(--red);margin-bottom:8px"></div>
-    <div style="display:flex;gap:8px;align-items:center">
-      <button id="dhcp-reserve-btn" style="font-size:13px;padding:5px 16px;border:1px solid var(--accent);border-radius:5px;background:none;color:var(--accent);cursor:pointer">⚓ Reserve</button>
-      <button onclick="closeDhcpModal()" style="font-size:13px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:none;color:var(--text-muted);cursor:pointer">Cancel</button>
-      <span id="dhcp-reserve-status" style="font-size:12px;color:var(--text-muted)"></span>
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:.05em;margin-bottom:10px">NEW RESERVATION</div>
+      <div style="display:grid;grid-template-columns:148px 1fr;gap:10px;margin-bottom:8px">
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">IP address</label>
+          <input id="dhcp-ip-input" type="text" value="${esc(currentIp||'')}" placeholder="e.g. ${esc(rs||'10.0.0.x')}" maxlength="15"
+                 style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Hostname</label>
+          <input id="dhcp-hn-input" type="text" value="${esc(currentHostname||'')}" placeholder="Optional"
+                 style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
+        </div>
+      </div>
+      <div id="dhcp-ip-warn" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="dhcp-reserve-btn" style="font-size:13px;padding:6px 20px;border:none;border-radius:5px;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">⚓ Reserve</button>
+        <button onclick="closeDhcpModal()" style="font-size:13px;padding:6px 14px;border:1px solid var(--border);border-radius:5px;background:none;color:var(--text-muted);cursor:pointer">Cancel</button>
+        <span id="dhcp-reserve-status" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
     </div>
   `;
 
