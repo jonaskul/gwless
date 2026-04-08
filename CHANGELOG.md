@@ -1,3 +1,7 @@
+## v0.3.12 — 2026-04-08
+
+- feat: show hostname in Recent Events list
+
 ## v0.3.11 — 2026-04-08
 
 - fix: restore MAC column in DHCP modal reservations table
