@@ -805,8 +805,55 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 #dhcp-overlay.open { display: flex; }
 #dhcp-modal {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; width: 100%; max-width: 640px;
+  border-radius: 10px; width: 100%; max-width: 640px; overflow: hidden;
 }
+.dhcp-scope-card {
+  background: var(--surface2); border-left: 3px solid var(--accent);
+  border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;
+}
+.dhcp-scope-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
+.dhcp-scope-label {
+  font-size: 10px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
+}
+.dhcp-scope-value { font-size: 13px; }
+.sr-list-wrap { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+.sr-scroll { max-height: 220px; overflow-y: auto; }
+.sr-header-row, .sr-row { display: grid; grid-template-columns: 110px 1fr 130px; font-size: 12px; }
+.sr-header-row { background: var(--surface2); position: sticky; top: 0; z-index: 1; }
+.sr-header-row > span {
+  padding: 6px 10px; font-size: 11px; font-weight: 500;
+  letter-spacing: .04em; color: var(--text-muted);
+}
+.sr-row { border-top: 1px solid var(--border); }
+.sr-row:hover { background: var(--surface2); }
+.sr-row > span { padding: 7px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-ip  { color: var(--accent); }
+.sr-mac { color: var(--text-muted); font-size: 11px; }
+.dhcp-form-section { border-top: 1px solid var(--border); padding-top: 14px; }
+.dhcp-form-label {
+  font-size: 10px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;
+}
+.dhcp-form-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.dhcp-input {
+  width: 100%; box-sizing: border-box; font-size: 13px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg); color: var(--text); outline: none;
+}
+.dhcp-input:focus { border-color: var(--accent); }
+.dhcp-input::placeholder { color: var(--text-muted); }
+.dhcp-btn-row { display: flex; gap: 8px; align-items: center; }
+.dhcp-btn-reserve {
+  font-size: 13px; padding: 7px 20px; border: none; border-radius: 5px;
+  background: var(--accent); color: #fff; cursor: pointer; font-weight: 500;
+}
+.dhcp-btn-reserve:disabled { opacity: .45; cursor: not-allowed; }
+.dhcp-btn-cancel {
+  font-size: 13px; padding: 7px 14px; border: 1px solid var(--border);
+  border-radius: 5px; background: var(--surface2); color: var(--text-muted); cursor: pointer;
+}
+.dhcp-btn-cancel:hover { background: var(--border); color: var(--text); }
 
 #events-modal {
   background: var(--surface);
@@ -1993,61 +2040,51 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
   const re = scopeInfo?.range_end   || rangeEnd   || '';
 
   body.innerHTML = `
-    <div style="background:var(--surface2);border-radius:8px;padding:12px 14px;font-size:12px;margin-bottom:16px">
+    <div class="dhcp-scope-card">
       ${scopeInfo ? `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px">
-        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Subnet</div>${esc(scopeInfo.subnet||'—')}</div>
-        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Gateway</div>${esc(scopeInfo.gateway||'—')}</div>
-        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Dynamic range</div><span class="mono">${esc(rs)} – ${esc(re)}</span></div>
-        <div><div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">DNS</div>${esc([scopeInfo.dns1,scopeInfo.dns2].filter(Boolean).join(', ')||'—')}</div>
-      </div>
-      ` : `<div style="color:var(--text-muted);font-size:11px;margin-bottom:2px">Dynamic range</div><span class="mono">${esc(rs)} – ${esc(re)}</span>`}
+      <div class="dhcp-scope-grid">
+        <div><div class="dhcp-scope-label">Subnet</div><div class="dhcp-scope-value">${esc(scopeInfo.subnet||'—')}</div></div>
+        <div><div class="dhcp-scope-label">Gateway</div><div class="dhcp-scope-value">${esc(scopeInfo.gateway||'—')}</div></div>
+        <div><div class="dhcp-scope-label">Dynamic range</div><div class="dhcp-scope-value mono">${esc(rs)} – ${esc(re)}</div></div>
+        <div><div class="dhcp-scope-label">DNS</div><div class="dhcp-scope-value">${esc([scopeInfo.dns1,scopeInfo.dns2].filter(Boolean).join(', ')||'—')}</div></div>
+      </div>` : `
+      <div class="dhcp-scope-label">Dynamic range</div>
+      <div class="dhcp-scope-value mono">${esc(rs)} – ${esc(re)}</div>`}
     </div>
 
     <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px">
       <span style="font-size:12px;font-weight:600">Existing static reservations</span>
       <span style="font-size:11px;color:var(--text-muted)">${statics.length} total</span>
     </div>
-    <style>#dhcp-modal .sr-row:hover{background:var(--surface2)}</style>
-    ${statics.length ? `
-    <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:16px">
-      <div style="max-height:220px;overflow-y:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
-          <colgroup><col style="width:20%"><col style="width:55%"><col style="width:25%"></colgroup>
-          <thead><tr style="background:var(--surface2);position:sticky;top:0;z-index:1">
-            <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">IP</th>
-            <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">HOSTNAME</th>
-            <th style="padding:6px 10px;text-align:left;color:var(--text-muted);font-weight:500;font-size:11px;letter-spacing:.04em">MAC</th>
-          </tr></thead>
-          <tbody>${statics.map(s => `
-            <tr class="sr-row" style="border-top:1px solid var(--border)">
-              <td class="mono" style="padding:6px 10px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.ip||'—')}</td>
-              <td style="padding:6px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.hostname||'—')}</td>
-              <td class="mono" style="padding:6px 10px;color:var(--text-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.mac||'—')}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>` : `<div style="font-size:12px;color:var(--text-muted);padding:6px 0 16px">No static reservations in this scope yet.</div>`}
 
-    <div style="border-top:1px solid var(--border);padding-top:14px">
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">New reservation</div>
-      <div style="display:grid;grid-template-columns:148px 1fr;gap:10px;margin-bottom:8px">
+    ${statics.length ? `
+    <div class="sr-list-wrap"><div class="sr-scroll">
+      <div class="sr-header-row"><span>IP</span><span>HOSTNAME</span><span>MAC</span></div>
+      ${statics.map(s => `
+      <div class="sr-row">
+        <span class="sr-ip mono">${esc(s.ip||'—')}</span>
+        <span>${esc(s.hostname||'—')}</span>
+        <span class="sr-mac mono">${esc(s.mac||'—')}</span>
+      </div>`).join('')}
+    </div></div>
+    ` : `<div style="font-size:12px;color:var(--text-muted);padding:6px 0 16px">No static reservations in this scope yet.</div>`}
+
+    <div class="dhcp-form-section">
+      <div style="font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:12px">New reservation</div>
+      <div class="dhcp-form-inputs">
         <div>
-          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">IP address</label>
-          <input id="dhcp-ip-input" type="text" value="${esc(currentIp||'')}" placeholder="e.g. ${esc(rs||'10.0.0.x')}" maxlength="15"
-                 style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
+          <label class="dhcp-form-label" for="dhcp-ip-input">IP address</label>
+          <input id="dhcp-ip-input" class="dhcp-input" type="text" value="${esc(currentIp||'')}" placeholder="e.g. ${esc(rs||'10.0.0.x')}" maxlength="15">
         </div>
         <div>
-          <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Hostname</label>
-          <input id="dhcp-hn-input" type="text" value="${esc(currentHostname||'')}" placeholder="Optional"
-                 style="width:100%;box-sizing:border-box;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
+          <label class="dhcp-form-label" for="dhcp-hn-input">Hostname</label>
+          <input id="dhcp-hn-input" class="dhcp-input" type="text" value="${esc(currentHostname||'')}" placeholder="Optional">
         </div>
       </div>
       <div id="dhcp-ip-warn" style="display:none;font-size:11px;color:var(--red);margin-bottom:10px"></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button id="dhcp-reserve-btn" style="font-size:13px;padding:6px 20px;border:none;border-radius:5px;background:var(--accent);color:#fff;cursor:pointer;font-weight:500">⚓ Reserve</button>
-        <button onclick="closeDhcpModal()" style="font-size:13px;padding:6px 14px;border:1px solid var(--border);border-radius:5px;background:none;color:var(--text-muted);cursor:pointer">Cancel</button>
+      <div class="dhcp-btn-row">
+        <button id="dhcp-reserve-btn" class="dhcp-btn-reserve">⚓ Reserve</button>
+        <button class="dhcp-btn-cancel" onclick="closeDhcpModal()">Cancel</button>
         <span id="dhcp-reserve-status" style="font-size:12px;color:var(--text-muted)"></span>
       </div>
     </div>
