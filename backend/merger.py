@@ -108,7 +108,11 @@ def merge_clients(
     for static in sophos_static:
         mac = normalize_mac(static.get("mac", ""))
         ip = normalize_ip(static.get("ip", ""))
-        record = {**static, "mac": mac, "ip": ip, "sophos_type": "static"}
+        # Apply same enrichment as dynamic leases: fallback scope_name and range from server config
+        scope_name = static.get("scope_name") or _scope_for_ip(ip, servers)
+        range_start, range_end = _range_for_ip(ip, servers)
+        record = {**static, "mac": mac, "ip": ip, "sophos_type": "static",
+                  "scope_name": scope_name, "range_start": range_start, "range_end": range_end}
         if mac:
             sophos_by_mac[mac] = record
         if ip:

@@ -340,11 +340,15 @@ def fetch_dhcp_server_config(config: dict) -> dict:
             "range_end": None,
         }
 
-        # IP range
+        # IP range — Sophos returns compact format {"IP": "start-end"}
         ip_range = srv.get("IPLease") or srv.get("IPRange") or srv.get("Range") or {}
         if isinstance(ip_range, dict):
-            server_info["range_start"] = ip_range.get("StartIP") or ip_range.get("From")
-            server_info["range_end"] = ip_range.get("EndIP") or ip_range.get("To")
+            ip_compact = ip_range.get("IP", "")
+            if ip_compact and "-" in ip_compact:
+                server_info["range_start"], server_info["range_end"] = _split_ip_range(ip_compact)
+            else:
+                server_info["range_start"] = ip_range.get("StartIP") or ip_range.get("From")
+                server_info["range_end"] = ip_range.get("EndIP") or ip_range.get("To")
 
         servers.append(server_info)
 
