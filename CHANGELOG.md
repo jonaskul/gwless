@@ -1,3 +1,7 @@
+## v0.3.6 — 2026-04-08
+
+- feat: DHCP scope modal for Make static
+
 ## v0.3.5 — 2026-04-07
 
 - feat: version check in update.sh before downloading
