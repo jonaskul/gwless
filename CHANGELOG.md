@@ -1,3 +1,7 @@
+## v0.3.10 — 2026-04-08
+
+- style: polish DHCP scope modal layout and form
+
 ## v0.3.9 — 2026-04-08
 
 - style: widen DHCP scope modal (640px, taller reservations table)
