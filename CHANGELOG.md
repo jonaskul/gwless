@@ -1,3 +1,7 @@
+## v0.3.13 — 2026-04-08
+
+- style: redesign DHCP modal with CSS classes and grid-based rows
+
 ## v0.3.12 — 2026-04-08
 
 - feat: show hostname in Recent Events list
