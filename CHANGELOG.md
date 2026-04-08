@@ -1,3 +1,7 @@
+## v0.3.7 — 2026-04-08
+
+- fix: dynamic range and static reservations missing in DHCP modal
+
 ## v0.3.6 — 2026-04-08
 
 - feat: DHCP scope modal for Make static
