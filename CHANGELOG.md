@@ -1,3 +1,7 @@
+## v0.3.8 — 2026-04-08
+
+- fix: static reservations missing in DHCP modal when search is active
+
 ## v0.3.7 — 2026-04-08
 
 - fix: dynamic range and static reservations missing in DHCP modal
