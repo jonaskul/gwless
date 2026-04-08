@@ -796,6 +796,18 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
 }
 #events-overlay.open { display: flex; }
 
+#dhcp-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6); z-index: 200;
+  align-items: flex-start; justify-content: center;
+  padding: 40px 20px; overflow-y: auto;
+}
+#dhcp-overlay.open { display: flex; }
+#dhcp-modal {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; width: 100%; max-width: 500px;
+}
+
 #events-modal {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -988,6 +1000,20 @@ tr.data-row.selected { background: rgba(88,166,255,0.07); }
       <button class="settings-close" onclick="closeEvents()">✕</button>
     </div>
     <div id="events-list" style="padding:16px 20px;overflow-y:auto;max-height:65vh"></div>
+  </div>
+</div>
+
+<!-- DHCP scope modal -->
+<div id="dhcp-overlay">
+  <div id="dhcp-modal">
+    <div class="settings-header">
+      <div>
+        <h2 style="margin:0;font-size:15px">Reserve Static IP</h2>
+        <p id="dhcp-modal-scope" style="margin:4px 0 0;font-size:12px;color:var(--text-muted)"></p>
+      </div>
+      <button class="settings-close" onclick="closeDhcpModal()">✕</button>
+    </div>
+    <div id="dhcp-modal-body" style="padding:16px 20px"></div>
   </div>
 </div>
 
@@ -1828,16 +1854,6 @@ function buildPanelContent(c) {
       ${showMakeStatic ? `<div class="make-static-form" data-mac="${esc(s.mac)}" data-scope="${esc(s.scope_name)}" data-range-start="${esc(s.range_start||'')}" data-range-end="${esc(s.range_end||'')}">
         <div class="panel-action">
           <button class="make-static-btn">⚓ Make static</button>
-          <span class="make-static-status"></span>
-        </div>
-        <div class="make-static-fields" style="display:none;margin-top:8px;display:none">
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <input class="make-static-ip" type="text" value="${esc(s.ip||'')}" placeholder="IP address" style="width:130px;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">
-            <input class="make-static-hn" type="text" value="${esc(s.hostname||'')}" placeholder="Hostname" style="width:110px;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">
-            <button class="make-static-confirm" style="font-size:12px;padding:3px 10px;border:1px solid var(--accent);border-radius:4px;background:none;color:var(--accent);cursor:pointer">Reserve</button>
-            <button class="make-static-cancel" style="font-size:12px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:none;color:var(--text-muted);cursor:pointer">Cancel</button>
-          </div>
-          <div class="make-static-ip-warn" style="display:none;font-size:11px;color:var(--red);margin-top:4px"></div>
         </div>
       </div>` : ''}
       ${showRemoveStatic ? `<div class="panel-action">
@@ -1945,6 +1961,141 @@ async function openEvents() {
 
 function closeEvents() {
   document.getElementById('events-overlay').classList.remove('open');
+}
+
+function closeDhcpModal() {
+  document.getElementById('dhcp-overlay').classList.remove('open');
+}
+
+async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeStart, rangeEnd) {
+  const overlay = document.getElementById('dhcp-overlay');
+  const body    = document.getElementById('dhcp-modal-body');
+  document.getElementById('dhcp-modal-scope').textContent = scopeName;
+  body.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:4px 0">Loading…</div>';
+  overlay.classList.add('open');
+
+  // Fetch full scope details from backend
+  let scopeInfo = null;
+  try {
+    const r = await fetch('/api/scopes');
+    const data = await r.json();
+    scopeInfo = (data.scopes || []).find(s => s.name === scopeName) || null;
+  } catch (_) {}
+
+  // Existing static reservations in this scope (sorted by IP)
+  const statics = state.clients
+    .filter(c => c.sophos?.scope_name === scopeName && c.sophos?.lease_type === 'static')
+    .sort((a, b) => {
+      const toNum = ip => (ip || '0.0.0.0').split('.').reduce((n, o) => (n << 8) + parseInt(o, 10), 0) >>> 0;
+      return toNum(a.sophos.ip) - toNum(b.sophos.ip);
+    });
+
+  const rs = scopeInfo?.range_start || rangeStart || '';
+  const re = scopeInfo?.range_end   || rangeEnd   || '';
+
+  body.innerHTML = `
+    <div style="background:var(--surface2);border-radius:6px;padding:10px 12px;font-size:12px;display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;margin-bottom:14px">
+      ${scopeInfo ? `
+        <span style="color:var(--text-muted)">Subnet</span><span>${esc(scopeInfo.subnet || '—')}</span>
+        <span style="color:var(--text-muted)">Gateway</span><span>${esc(scopeInfo.gateway || '—')}</span>
+        <span style="color:var(--text-muted)">Dynamic range</span><span class="mono">${esc(rs)} – ${esc(re)}</span>
+        <span style="color:var(--text-muted)">DNS</span><span>${esc([scopeInfo.dns1, scopeInfo.dns2].filter(Boolean).join(', ') || '—')}</span>
+      ` : `<span style="color:var(--text-muted)">Dynamic range</span><span class="mono">${esc(rs)} – ${esc(re)}</span>`}
+    </div>
+
+    <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Existing static reservations (${statics.length})</div>
+    ${statics.length ? `
+    <div style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:14px">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--surface2)">
+          <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">IP</th>
+          <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">Hostname</th>
+          <th style="padding:5px 10px;text-align:left;color:var(--text-muted);font-weight:500">MAC</th>
+        </tr></thead>
+        <tbody>${statics.map(c => `
+          <tr class="dhcp-static-row" style="border-top:1px solid var(--border)">
+            <td class="mono" style="padding:5px 10px;color:var(--accent)">${esc(c.sophos.ip || '—')}</td>
+            <td style="padding:5px 10px">${esc(c.sophos.hostname || c.hostname || '—')}</td>
+            <td class="mono" style="padding:5px 10px;color:var(--text-muted)">${esc(c.mac || '—')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">No static reservations yet in this scope.</div>`}
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+      <input id="dhcp-ip-input" type="text" value="${esc(currentIp||'')}" placeholder="IP address" maxlength="15"
+             style="width:140px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
+      <input id="dhcp-hn-input" type="text" value="${esc(currentHostname||'')}" placeholder="Hostname"
+             style="flex:1;min-width:120px;font-size:13px;padding:5px 8px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)">
+    </div>
+    <div id="dhcp-ip-warn" style="display:none;font-size:11px;color:var(--red);margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="dhcp-reserve-btn" style="font-size:13px;padding:5px 16px;border:1px solid var(--accent);border-radius:5px;background:none;color:var(--accent);cursor:pointer">⚓ Reserve</button>
+      <button onclick="closeDhcpModal()" style="font-size:13px;padding:5px 12px;border:1px solid var(--border);border-radius:5px;background:none;color:var(--text-muted);cursor:pointer">Cancel</button>
+      <span id="dhcp-reserve-status" style="font-size:12px;color:var(--text-muted)"></span>
+    </div>
+  `;
+
+  const ipInput    = document.getElementById('dhcp-ip-input');
+  const warnEl     = document.getElementById('dhcp-ip-warn');
+  const reserveBtn = document.getElementById('dhcp-reserve-btn');
+
+  function validateIp() {
+    const ip = ipInput.value.trim();
+    let warn = '';
+    if (rs && re && ip) {
+      try {
+        const toNum = a => a.split('.').reduce((n, o) => (n << 8) + parseInt(o, 10), 0) >>> 0;
+        if (toNum(ip) >= toNum(rs) && toNum(ip) <= toNum(re))
+          warn = `IP ${ip} is within the dynamic DHCP range (${rs}–${re})`;
+      } catch (_) {}
+    }
+    if (!warn && ip) {
+      for (const c of state.clients) {
+        if (!c.sophos || c.sophos.lease_type !== 'static') continue;
+        if (c.mac === mac) continue;
+        if ((c.sophos.ip || '') === ip) {
+          warn = `IP ${ip} is already reserved for ${c.sophos.hostname || c.mac}`;
+          break;
+        }
+      }
+    }
+    warnEl.textContent = warn;
+    warnEl.style.display = warn ? '' : 'none';
+    reserveBtn.disabled = !!warn;
+  }
+
+  ipInput.addEventListener('input', validateIp);
+  validateIp();
+
+  reserveBtn.addEventListener('click', async () => {
+    const ip       = document.getElementById('dhcp-ip-input').value.trim();
+    const hostname = document.getElementById('dhcp-hn-input').value.trim();
+    const statusEl = document.getElementById('dhcp-reserve-status');
+    reserveBtn.disabled = true;
+    statusEl.textContent = 'Reserving…';
+    statusEl.style.color = 'var(--text-muted)';
+    try {
+      const res = await fetch('/api/sophos/dhcp/reserve', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', ..._getSecretHeaders()},
+        body: JSON.stringify({server_name: scopeName, mac, ip, hostname}),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        closeDhcpModal();
+        fetchClients();
+      } else {
+        statusEl.textContent = data.message || 'Failed';
+        statusEl.style.color = 'var(--red)';
+        reserveBtn.disabled = false;
+      }
+    } catch {
+      statusEl.textContent = 'Network error';
+      statusEl.style.color = 'var(--red)';
+      reserveBtn.disabled = false;
+    }
+  });
 }
 
 function kvRow(label, value, copyable, raw) {
@@ -2190,96 +2341,14 @@ function initEvents() {
     e.target.disabled = false;
   });
 
-  // "Make static" — click button to expand form
+  // "Make static" — open DHCP scope modal
   document.getElementById('popover-content').addEventListener('click', e => {
     const btn = e.target.closest('.make-static-btn');
     if (!btn) return;
     const form = btn.closest('.make-static-form');
-    const fields = form.querySelector('.make-static-fields');
-    fields.style.display = fields.style.display === 'none' ? '' : 'none';
-  });
-
-  // "Make static" — real-time IP validation
-  document.getElementById('popover-content').addEventListener('input', e => {
-    const input = e.target.closest('.make-static-ip');
-    if (!input) return;
-    const form = input.closest('.make-static-form');
-    const warnEl = form.querySelector('.make-static-ip-warn');
-    const confirmBtn = form.querySelector('.make-static-confirm');
-    const ip = input.value.trim();
-    const { rangeStart, rangeEnd, mac: ownMac } = form.dataset;
-
-    let warn = '';
-
-    // Check if IP is in the dynamic DHCP range
-    if (rangeStart && rangeEnd && ip) {
-      try {
-        const toNum = a => a.split('.').reduce((n, o) => (n << 8) + parseInt(o, 10), 0) >>> 0;
-        const ipNum = toNum(ip);
-        if (ipNum >= toNum(rangeStart) && ipNum <= toNum(rangeEnd)) {
-          warn = `IP ${ip} is within the dynamic DHCP range (${rangeStart}–${rangeEnd})`;
-        }
-      } catch (_) {}
-    }
-
-    // Check if IP is already used by another static reservation
-    if (!warn && ip) {
-      for (const c of state.clients) {
-        if (!c.sophos || c.sophos.lease_type !== 'static') continue;
-        if (c.mac === ownMac) continue;
-        if ((c.sophos.ip || '') === ip) {
-          warn = `IP ${ip} is already reserved for ${c.sophos.hostname || c.mac}`;
-          break;
-        }
-      }
-    }
-
-    warnEl.textContent = warn;
-    warnEl.style.display = warn ? '' : 'none';
-    confirmBtn.disabled = !!warn;
-  });
-
-  // "Make static" — cancel
-  document.getElementById('popover-content').addEventListener('click', e => {
-    if (!e.target.closest('.make-static-cancel')) return;
-    const fields = e.target.closest('.make-static-fields');
-    fields.style.display = 'none';
-  });
-
-  // "Make static" — confirm reservation
-  document.getElementById('popover-content').addEventListener('click', async e => {
-    const confirmBtn = e.target.closest('.make-static-confirm');
-    if (!confirmBtn) return;
-    const form = confirmBtn.closest('.make-static-form');
-    const { mac, scope } = form.dataset;
-    const ip       = form.querySelector('.make-static-ip').value.trim();
-    const hostname = form.querySelector('.make-static-hn').value.trim();
-    const statusEl = form.querySelector('.make-static-status');
-    confirmBtn.disabled = true;
-    statusEl.style.color = 'var(--text-muted)';
-    statusEl.textContent = 'Saving…';
-    try {
-      const res = await fetch('/api/sophos/dhcp/reserve', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', ..._getSecretHeaders()},
-        body: JSON.stringify({ server_name: scope, mac, ip, hostname })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        statusEl.style.color = 'var(--green)';
-        statusEl.textContent = '✓ Reserved';
-        form.querySelector('.make-static-btn').remove();
-        form.querySelector('.make-static-fields').remove();
-      } else {
-        statusEl.style.color = 'var(--red)';
-        statusEl.textContent = data.message || 'Failed';
-        confirmBtn.disabled = false;
-      }
-    } catch {
-      statusEl.style.color = 'var(--red)';
-      statusEl.textContent = 'Network error';
-      confirmBtn.disabled = false;
-    }
+    const { mac, scope, rangeStart, rangeEnd } = form.dataset;
+    const c = state.clients.find(x => x.mac === mac);
+    openDhcpModal(mac, scope, c?.sophos?.ip || '', c?.sophos?.hostname || c?.hostname || '', rangeStart, rangeEnd);
   });
 
   // "Remove static" button inside popover (delegated)
@@ -3062,6 +3131,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === document.getElementById('events-overlay')) closeEvents();
   });
 
+  // Close DHCP modal on overlay click
+  document.getElementById('dhcp-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('dhcp-overlay')) closeDhcpModal();
+  });
+
   // Close modal on overlay click
   document.getElementById('settings-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('settings-overlay')) closeSettings();
@@ -3070,7 +3144,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Escape closes modals and panel
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (document.getElementById('events-overlay').classList.contains('open')) {
+      if (document.getElementById('dhcp-overlay').classList.contains('open')) {
+        closeDhcpModal();
+      } else if (document.getElementById('events-overlay').classList.contains('open')) {
         closeEvents();
       } else if (document.getElementById('settings-overlay').classList.contains('open')) {
         closeSettings();
