@@ -1,3 +1,7 @@
+## v0.3.14 — 2026-04-09
+
+- fix: copy button falls back to execCommand on non-HTTPS
+
 ## v0.3.13 — 2026-04-08
 
 - style: redesign DHCP modal with CSS classes and grid-based rows
