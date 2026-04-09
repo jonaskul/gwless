@@ -2164,12 +2164,27 @@ function kvRow(label, value, copyable, raw) {
 
 function copyText(btn) {
   const text = btn.dataset.copy;
-  navigator.clipboard.writeText(text).then(() => {
+  const finish = () => {
     const orig = btn.textContent;
     btn.textContent = '✓';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
-  });
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(finish).catch(() => fallbackCopy(text, finish));
+  } else {
+    fallbackCopy(text, finish);
+  }
+}
+
+function fallbackCopy(text, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); cb(); } catch(_) {}
+  document.body.removeChild(ta);
 }
 
 function formatUptime(seconds) {
