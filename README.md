@@ -22,7 +22,8 @@ The LXC container needs outbound internet access on first start to download Pyth
 - Unified client table — merges Sophos DHCP leases with UniFi data via MAC (IP fallback)
 - Source tagging: `both`, `sophos_only`, `unifi_only`
 - Live status — green = active in UniFi, grey = lease-only
-- Detail popover at mouse cursor — full Sophos + UniFi data, one-click copy, and history
+- Detail panel at mouse cursor — full Sophos + UniFi data, one-click copy, and history
+- Custom display names — rename any device; shown in accent colour throughout the UI
 - Sortable columns, full-text search (hostname / IP / MAC / vendor)
 - Multi-select filters: VLAN, source, connection type, lease type — with one-click clear
 - Auto-refresh every 30 s with visible countdown
@@ -37,21 +38,20 @@ The LXC container needs outbound internet access on first start to download Pyth
 
 **History & events**
 - SQLite-backed device history — first/last seen, IP/hostname changes
-- Global event feed via `⏱` in the header
+- Global event feed (`⏱` in the header) — shows device name alongside MAC for easy reading
 
 **DHCP Management**
-- Create and remove static DHCP reservations directly from the device popover
-- Expandable form pre-filled with current IP and hostname — editable before submitting
-- Real-time validation: warns if the entered IP is inside the dynamic range or already reserved
-- Sophos XML API is updated live; dashboard refreshes automatically
+- Create and remove static DHCP reservations directly from the device panel
+- Form pre-filled with current IP and hostname — editable before submitting
+- Real-time validation: warns if IP is inside the dynamic range or already reserved
 
 **Management**
 - In-app update — check, preview changelog, one-click apply with live output
 - In-app OS update (`apt upgrade`) streamed live
-- Backup & Restore — download/upload a ZIP of `config.yaml` + `history.db`, with password include/exclude
-- OUI vendor lookup — local database, auto-downloaded on first start (IEEE source, manual update button in settings)
-- Optional login page — username/password auth with 24 h session, enabled from Settings
-- Version number displayed in header
+- Backup & Restore — download/upload a ZIP of `config.yaml` + `history.db`
+- OUI vendor lookup — local database, auto-downloaded on first start, manual update in Settings
+- Optional login page — username/password auth with 24 h sessions, enabled from Settings
+- Version number displayed in the header
 
 ---
 
@@ -69,7 +69,7 @@ The installer prompts for optional customisation (CT ID, RAM, disk, bridge), the
 4. Sets a random root password and enables SSH
 5. Prints the dashboard URL, SSH address, and root password
 
-Open the dashboard URL, click **⚙ Settings**, enter your UniFi and Sophos credentials, and use the **Test** buttons before saving. No credentials are required during install.
+Open the dashboard URL, click **⚙ Settings**, enter your UniFi and Sophos credentials, and use the **Test** buttons before saving.
 
 ---
 
@@ -117,9 +117,9 @@ When syslog has received at least one event it takes priority over SSH. SSH rema
 | Severity level | `Information` |
 | Format | `Standard syslog protocol` |
 
-After saving the server, go to **Log Settings** and ensure **DHCP** events are enabled for the syslog destination. Click Apply.
+After saving the server, go to **Log Settings** and ensure **DHCP** events are enabled for the syslog destination.
 
-**3. Verify** — the Settings status row turns green (*"Receiving — N lease(s), last event Xs ago"*) on the first DHCP event. You can trigger one immediately by releasing/renewing a lease on any device.
+**3. Verify** — the Settings status row turns green (*"Receiving — N lease(s), last event Xs ago"*) on the first DHCP event. Trigger one immediately by releasing/renewing a lease on any device.
 
 ---
 
@@ -127,24 +127,22 @@ After saving the server, go to **Log Settings** and ensure **DHCP** events are e
 
 ### Login Page
 
-An optional username/password login can be enabled to protect the entire dashboard.
-
 1. Open **⚙ Settings → App → Login**
 2. Tick **Enable login page**, set a username and password, click **Save**
-3. All `/api/*` endpoints are immediately protected — the browser will show the login screen on next load
+3. All `/api/*` endpoints are immediately protected
 
-Sessions are stored in memory (cleared on service restart) and expire after 24 hours of inactivity. The session cookie is `HttpOnly` and `SameSite=Strict`.
-
-> The API Secret (below) and the login page are independent. The login page controls who can view the dashboard; the API Secret controls who can change settings.
+Sessions expire after 24 hours of inactivity. The session cookie is `HttpOnly` and `SameSite=Strict`.
 
 ### API Secret
 
 Mutating endpoints can be protected with a shared secret.
 
 1. Set `app.secret: your-secret` in `config.yaml` and restart
-2. Enter the same value in **⚙ Settings → App → API Secret** — it is stored in `sessionStorage` and sent as an `X-Gwless-Secret` header
+2. Enter the same value in **⚙ Settings → App → API Secret** — sent as `X-Gwless-Secret`
 
 Read-only endpoints (`GET /api/clients`, masked `GET /api/config`) remain open.
+
+> The API Secret and the login page are independent. Login controls who can view the dashboard; the Secret controls who can change settings.
 
 ### SSH Host Key Pinning
 
@@ -156,24 +154,48 @@ On first SSH connection the host key fingerprint is saved to `config.yaml` under
 
 All settings can be managed from the **⚙ Settings** panel. Direct file reference:
 
+### `sophos`
+
 | Key | Default | Description |
 |-----|---------|-------------|
-| `sophos.host` | — | Sophos XGS IP or hostname |
-| `sophos.api_port` | `4444` | WebAdmin API port |
-| `sophos.ssh_enabled` | `false` | Enable SSH access (requires full admin) |
-| `sophos.ssh_port` | `22` | SSH port |
-| `sophos.ssh_host_key` | — | SSH host key (auto-populated on first connect) |
-| `unifi.host` | — | UniFi Network Application host |
-| `unifi.port` | `443` | UniFi HTTPS port |
-| `unifi.site` | `default` | UniFi site name |
-| `syslog.enabled` | `false` | Enable embedded UDP syslog receiver |
-| `syslog.port` | `514` | UDP port |
-| `syslog.bind_host` | `0.0.0.0` | Bind address |
-| `app.oui_update_on_start` | `true` | Download OUI database if missing |
-| `app.secret` | — | Optional API secret (protects mutating endpoints) |
-| `app.auth_enabled` | `false` | Enable login page |
-| `app.auth_username` | — | Login username |
-| `app.auth_password` | — | Login password |
+| `host` | — | Sophos XGS IP or hostname |
+| `api_port` | `4444` | WebAdmin API port |
+| `ssh_enabled` | `false` | Enable SSH access (requires full admin) |
+| `ssh_port` | `22` | SSH port |
+| `ssh_host_key` | — | SSH host key fingerprint (auto-populated on first connect) |
+| `poll_interval_leases` | `60` | Seconds between SSH lease refresh |
+| `poll_interval_config` | `300` | Seconds between XML API config refresh |
+| `verify_ssl` | `false` | Verify Sophos TLS certificate |
+
+### `unifi`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `host` | — | UniFi Network Application host |
+| `port` | `443` | HTTPS port |
+| `site` | `default` | UniFi site name |
+| `poll_interval` | `30` | Seconds between UniFi client refresh |
+| `verify_ssl` | `false` | Verify UniFi TLS certificate |
+
+### `syslog`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable embedded UDP syslog receiver |
+| `port` | `514` | UDP port |
+| `bind_host` | `0.0.0.0` | Bind address |
+
+### `app`
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `port` | `8080` | HTTP listen port |
+| `log_level` | `info` | `debug` / `info` / `warning` / `error` |
+| `oui_update_on_start` | `true` | Download OUI database if missing |
+| `secret` | — | Optional API secret (protects mutating endpoints) |
+| `auth_enabled` | `false` | Enable login page |
+| `auth_username` | — | Login username |
+| `auth_password` | — | Login password |
 
 ---
 
@@ -185,7 +207,7 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 |----------|-------------|
 | `GET /api/clients` | All merged clients — supports `?q=`, `?vlan=`, `?source=`, `?status=` |
 | `GET /api/clients/{mac}` | Full detail for one client |
-| `GET /api/scopes` | DHCP scopes with used/total lease counts |
+| `GET /api/scopes` | DHCP scopes with static reservations and lease counts |
 | `GET /api/stats` | Summary counts and data freshness |
 | `GET /api/syslog/status` | Syslog receiver status and recent log |
 | `GET /api/version` | Installed version |
@@ -197,6 +219,13 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 |----------|-------------|
 | `GET /api/history/device/{mac}` | First/last seen + event log for a MAC |
 | `GET /api/history/events` | Recent events across all devices (`?limit=`, max 500) |
+
+### Devices
+
+| Endpoint | Description |
+|----------|-------------|
+| `PATCH /api/device/{mac}/name` | Set a custom display name (`{"name": "..."}`) |
+| `DELETE /api/device/{mac}/name` | Clear custom display name |
 
 ### Update
 
@@ -226,8 +255,8 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 | `POST /api/restore` | Restore from backup ZIP |
 | `POST /api/oui/update` | Re-download OUI vendor database |
 | `POST /api/restart` | Restart the gwless service |
-| `POST /api/sophos/dhcp/reserve` | Create a static DHCP reservation on Sophos |
-| `POST /api/sophos/dhcp/unreserve` | Remove a static DHCP reservation from Sophos |
+| `POST /api/sophos/dhcp/reserve` | Create a static DHCP reservation |
+| `POST /api/sophos/dhcp/unreserve` | Remove a static DHCP reservation |
 | `POST /api/test/sophos-ssh` | Test Sophos SSH |
 | `POST /api/test/sophos-api` | Test Sophos XML API |
 | `POST /api/test/unifi` | Test UniFi connectivity |
@@ -258,7 +287,7 @@ pct exec <CTID> -- systemctl restart gwless
 # Follow logs
 pct exec <CTID> -- journalctl -u gwless -f
 
-# Edit config directly (or use ⚙ Settings in the dashboard)
+# Edit config directly
 pct exec <CTID> -- nano /opt/gwless/config.yaml
 
 # Inspect history database
@@ -270,31 +299,19 @@ pct exec <CTID> -- sqlite3 /opt/gwless/history.db \
 
 ## Manual Setup
 
-Gwless runs on any Linux host with Python 3.11+. No Proxmox required — a VM, a Raspberry Pi, a spare machine, or even a Docker container works fine.
-
-**Requirements:** Python 3.11+, `git`, `pip`
+Gwless runs on any Linux host with Python 3.11+.
 
 ```bash
 git clone https://github.com/jonaskul/gwless.git
 cd gwless
 pip install -r requirements.txt
-```
-
-Copy the example config and edit it, or skip this step and configure everything from the Settings panel after starting:
-
-```bash
-cp config.yaml.example config.yaml
-```
-
-Start the service:
-
-```bash
+cp config.yaml.example config.yaml   # optional — configure everything from the UI
 python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8080
 ```
 
-Open `http://<host-ip>:8080`, go to **⚙ Settings**, enter your Sophos and UniFi credentials, and click the **Test** buttons before saving.
+Open `http://<host-ip>:8080`, go to **⚙ Settings**, enter your credentials, and click **Test** before saving.
 
-### Running as a systemd service (optional)
+### Running as a systemd service
 
 ```bash
 sudo cp gwless.service /etc/systemd/system/
@@ -302,7 +319,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now gwless
 ```
 
-> The service file assumes `/opt/gwless` as the working directory. Adjust `WorkingDirectory` and `ExecStart` in the unit file if you cloned elsewhere.
+> The service file assumes `/opt/gwless` as the working directory. Adjust `WorkingDirectory` and `ExecStart` if you cloned elsewhere.
 
 ---
 
@@ -310,21 +327,10 @@ sudo systemctl enable --now gwless
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3 · FastAPI · paramiko · requests · xmltodict · SQLite |
+| Backend | Python 3 · FastAPI · uvicorn · paramiko · requests · xmltodict · SQLite |
 | Frontend | Single-file HTML — vanilla JS, no build step |
 | Fonts | Inter + JetBrains Mono |
 | Container | Debian 13 LXC on Proxmox VE |
-
----
-
-## Source Icons
-
-| Icon | Meaning |
-|------|---------|
-| ✅ | Matched — data from both Sophos and UniFi |
-| 📶 | UniFi wireless client |
-| 🔌 | UniFi wired client |
-| 🔥 | Sophos DHCP lease only — no UniFi data |
 
 ---
 
