@@ -1,3 +1,7 @@
+## v0.3.15 — 2026-05-04
+
+- docs: update README — add custom names, fix config table, clean up
+
 ## v0.3.14 — 2026-04-09
 
 - fix: copy button falls back to execCommand on non-HTTPS
