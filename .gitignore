@@ -3,3 +3,6 @@ __pycache__/
 config.yaml
 oui.json
 history.db
+
+# Test artefacts
+.pytest_cache/
