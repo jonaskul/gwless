@@ -210,19 +210,22 @@ class TestEnrichmentFromServerConfig:
         )
         assert rec["vlan"] == 999
 
-    @pytest.mark.xfail(
-        reason="BUG: the static branch of merge_clients omits the _vlan_for_ip "
-               "enrichment that the dynamic branch applies, so a static "
-               "reservation with no UniFi match reports vlan=None.",
-        strict=True,
-    )
     def test_static_reservation_gets_vlan_from_server_config(self):
+        """A reservation with no UniFi match still reports the scope's VLAN."""
         [rec] = merge_clients(
             sophos_leases=[], sophos_static=[{"mac": "aa:bb:cc:dd:ee:ff",
                                               "ip": "10.2.91.23"}],
             unifi_clients=[], unifi_aps={}, sophos_servers=SERVERS,
         )
         assert rec["vlan"] == 91
+
+    def test_explicit_vlan_on_static_wins_over_lookup(self):
+        [rec] = merge_clients(
+            sophos_leases=[], sophos_static=[{"mac": "aa:bb:cc:dd:ee:ff",
+                                              "ip": "10.2.91.23", "vlan": 999}],
+            unifi_clients=[], unifi_aps={}, sophos_servers=SERVERS,
+        )
+        assert rec["vlan"] == 999
 
 
 class TestFieldPreference:
