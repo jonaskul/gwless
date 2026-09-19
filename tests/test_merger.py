@@ -313,20 +313,46 @@ class TestIpFallbackMatching:
         assert rec["source"] == "both"
         assert rec["hostname"] == "leased"
 
-    @pytest.mark.xfail(
-        reason="BUG: when Sophos and UniFi report the same IP under different "
-               "MACs, the IP fallback fires in both directions and emits two "
-               "records for one device, each claiming source='both'.",
-        strict=True,
-    )
-    def test_same_ip_different_mac_does_not_duplicate_the_device(self):
+    def test_sophos_lease_without_mac_joins_unifi_by_ip(self):
+        """The fallback also works in the other direction."""
+        [rec] = merge_clients(
+            sophos_leases=[],
+            sophos_static=[{"mac": "aa:bb:cc:dd:ee:ff", "ip": "10.2.91.23"}],
+            unifi_clients=[{"mac": "", "ip": "10.2.91.23", "essid": "WIFI"}],
+            unifi_aps={},
+        )
+        assert rec["source"] == "both"
+        assert rec["unifi"]["essid"] == "WIFI"
+
+    def test_shared_ip_under_different_macs_stays_two_devices(self):
+        """
+        MAC is identity. A shared IP must never join two different MACs —
+        otherwise one address yields two rows that each claim source='both'.
+        """
         out = merge_clients(
             sophos_leases=[{"mac": "aa:aa:aa:aa:aa:aa", "ip": "10.2.91.150"}],
             sophos_static=[],
             unifi_clients=[{"mac": "bb:bb:bb:bb:bb:bb", "ip": "10.2.91.150"}],
             unifi_aps={},
         )
-        assert len(out) == 1
+        by_mac = {r["mac"]: r for r in out}
+        assert set(by_mac) == {"aa:aa:aa:aa:aa:aa", "bb:bb:bb:bb:bb:bb"}
+        assert by_mac["aa:aa:aa:aa:aa:aa"]["source"] == "sophos_only"
+        assert by_mac["bb:bb:bb:bb:bb:bb"]["source"] == "unifi_only"
+        # Neither may advertise a counterpart it was never matched to.
+        assert by_mac["aa:aa:aa:aa:aa:aa"]["unifi"] is None
+        assert by_mac["bb:bb:bb:bb:bb:bb"]["sophos"] is None
+
+    def test_mac_match_wins_when_ips_disagree(self):
+        """A MAC match joins the two sources even if their IPs differ."""
+        [rec] = merge_clients(
+            sophos_leases=[{"mac": "aa:bb:cc:dd:ee:ff", "ip": "10.2.91.150"}],
+            sophos_static=[],
+            unifi_clients=[{"mac": "aa:bb:cc:dd:ee:ff", "ip": "10.2.91.99"}],
+            unifi_aps={},
+        )
+        assert rec["source"] == "both"
+        assert rec["ip"] == "10.2.91.150"  # Sophos IP is authoritative
 
 
 class TestRecordShape:

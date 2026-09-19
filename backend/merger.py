@@ -63,6 +63,23 @@ def _range_for_ip(ip: str, servers: list[dict]) -> "tuple[str, str]":
     return ("", "")
 
 
+def _ip_fallback(by_ip: dict[str, dict], ip: str) -> "dict | None":
+    """
+    Look up a counterpart record by IP, accepting it only when that record
+    carries no MAC of its own.
+
+    MAC is a device's identity. When both sources report a MAC and those MACs
+    differ they are different devices, and joining them on a shared IP makes
+    one address yield two records that each claim to be matched. IP is a
+    fallback for the case the join was designed for: one source knowing an
+    address but not the MAC behind it.
+    """
+    candidate = by_ip.get(normalize_ip(ip))
+    if candidate is None or candidate.get("mac"):
+        return None
+    return candidate
+
+
 def merge_clients(
     sophos_leases: list[dict],
     sophos_static: list[dict],
@@ -141,8 +158,7 @@ def merge_clients(
     for mac, sophos in sophos_by_mac.items():
         unifi = unifi_by_mac.get(mac)
         if unifi is None:
-            ip = sophos.get("ip", "")
-            unifi = unifi_by_ip.get(ip)
+            unifi = _ip_fallback(unifi_by_ip, sophos.get("ip", ""))
 
         record = _build_record(mac, sophos, unifi)
         merged[mac] = record
@@ -151,7 +167,7 @@ def merge_clients(
     for mac, unifi in unifi_by_mac.items():
         if mac in merged:
             continue
-        sophos = sophos_by_ip.get(normalize_ip(unifi.get("ip", "")))
+        sophos = _ip_fallback(sophos_by_ip, unifi.get("ip", ""))
         record = _build_record(mac, sophos, unifi)
         merged[mac] = record
 
