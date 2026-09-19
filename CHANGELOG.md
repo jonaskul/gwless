@@ -1,3 +1,9 @@
+## v0.3.16 — 2026-09-19
+
+- fix: shared IP under different MACs no longer duplicates a device
+- fix: static reservations lose their VLAN
+- test: add merger.py test suite
+
 ## v0.3.15 — 2026-05-04
 
 - docs: update README — add custom names, fix config table, clean up
