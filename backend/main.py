@@ -299,10 +299,22 @@ def _get_merged_clients() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _read_version() -> str:
-    try:
-        return (Path(__file__).parent.parent / "VERSION").read_text().strip()
-    except Exception:
-        return "unknown"
+    """Read the installed version, preferring the checkout this file lives in.
+
+    Called at import time for the FastAPI metadata below, so it must never
+    raise — an unreadable VERSION file degrades to "unknown" rather than
+    taking down startup.
+    """
+    for candidate in (
+        Path(__file__).parent.parent / "VERSION",
+        Path("/opt/gwless/VERSION"),
+    ):
+        try:
+            if candidate.exists():
+                return candidate.read_text().strip()
+        except OSError:
+            continue
+    return "unknown"
 
 
 app = FastAPI(title="Gwless", description="DHCP & Network Client Dashboard", version=_read_version())
@@ -779,16 +791,6 @@ async def test_unifi(body: Optional[UniFiConfig] = None):
 # Version + Changelog
 # ---------------------------------------------------------------------------
 
-def _read_version() -> str:
-    for candidate in [
-        Path(__file__).parent.parent / "VERSION",
-        Path("/opt/gwless/VERSION"),
-    ]:
-        if candidate.exists():
-            return candidate.read_text().strip()
-    return "unknown"
-
-
 def _version_tuple(v: str):
     """Convert 'v0.1.4' or '0.1.4' to (0, 1, 4) for comparison."""
     return tuple(int(x) for x in v.strip().lstrip("v").split("."))
@@ -807,11 +809,6 @@ def _read_changelog(max_entries: int = 3) -> str:
             sections = re.split(r'(?=^## v)', text, flags=re.MULTILINE)
             return "\n".join(s.strip() for s in sections[:max_entries] if s.strip())
     return ""
-
-
-@app.get("/api/version")
-async def get_version():
-    return {"version": _read_version()}
 
 
 @app.get("/api/update/info")
