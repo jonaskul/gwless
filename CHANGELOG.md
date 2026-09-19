@@ -1,3 +1,7 @@
+## v0.3.17 — 2026-09-19
+
+- refactor: collapse duplicate _read_version and /api/version
+
 ## v0.3.16 — 2026-09-19
 
 - fix: shared IP under different MACs no longer duplicates a device
