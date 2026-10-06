@@ -1,3 +1,7 @@
+## v0.3.19 — 2026-10-06
+
+- fix: history backup and restore were broken in both directions
+
 ## v0.3.18 — 2026-10-06
 
 - docs: document credential keys and the real syslog format
