@@ -7,6 +7,7 @@ Two data sources:
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 import time
@@ -839,30 +840,50 @@ def diagnose_api(config: dict, log_fn=None) -> None:
         log(str(e), "err", final=True, ok=False)
 
 
+def _scope_network(srv: dict) -> "ipaddress.IPv4Network | None":
+    """
+    Work out the network a DHCP server serves.
+
+    Sophos reports `subnet` as the netmask (e.g. 255.255.255.0), not the
+    network address, so the network is anchored on the gateway — or the
+    range start when there is no gateway — and sized by that mask. Falls
+    back to the surrounding /24 when the mask is missing or unusable.
+    """
+    anchor = srv.get("gateway") or srv.get("range_start") or ""
+    if not anchor:
+        return None
+    for mask in (srv.get("subnet") or "", "24"):
+        try:
+            return ipaddress.ip_network(f"{anchor}/{mask}", strict=False)
+        except ValueError:
+            continue
+    return None
+
+
 def get_scopes_summary(servers: list[dict], active_leases: list[dict]) -> list[dict]:
     """Build scope summary with used/total lease counts."""
-    # Build quick lookup of how many leases per scope
-    # We don't have a direct scope→lease mapping, so approximate by subnet
     scopes = []
     for srv in servers:
         subnet = srv.get("subnet", "")
-        # Count leases in range (simple prefix match on first 3 octets)
-        prefix = ".".join(subnet.split(".")[:3]) + "." if subnet else ""
-        used = sum(1 for l in active_leases if l.get("ip", "").startswith(prefix)) if prefix else 0
+        network = _scope_network(srv)
 
-        # Calculate total from range
+        used = 0
+        if network is not None:
+            for lease in active_leases:
+                try:
+                    if ipaddress.ip_address(lease.get("ip", "")) in network:
+                        used += 1
+                except ValueError:
+                    continue
+
+        # Size of the dynamic pool
         total = 0
         try:
             start = srv.get("range_start") or ""
             end = srv.get("range_end") or ""
             if start and end:
-                s_parts = [int(x) for x in start.split(".")]
-                e_parts = [int(x) for x in end.split(".")]
-                total = (
-                    (e_parts[3] - s_parts[3] + 1)
-                    + (e_parts[2] - s_parts[2]) * 256
-                )
-        except Exception:
+                total = int(ipaddress.ip_address(end)) - int(ipaddress.ip_address(start)) + 1
+        except ValueError:
             pass
 
         scopes.append({
