@@ -1,3 +1,9 @@
+## v0.3.18 — 2026-10-06
+
+- docs: document credential keys and the real syslog format
+- fix: validate DHCP reservation input; renaming no longer flushes leases
+- fix: /api/scopes always reported zero active leases
+
 ## v0.3.17 — 2026-09-19
 
 - refactor: collapse duplicate _read_version and /api/version
