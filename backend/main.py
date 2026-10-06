@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 from .cache import TTLCache
+from . import history
 from .history import init_db, record_seen, get_device, get_recent_events, set_custom_name, get_all_custom_names
 from .merger import merge_clients, normalize_mac
 from .oui import lookup as oui_lookup, ensure_oui_db, download_oui_db
@@ -999,9 +1000,8 @@ async def backup_download(skip_passwords: bool = False):
                 zf.writestr("config.yaml", yaml.dump(cfg_data, default_flow_style=False, allow_unicode=True))
             else:
                 zf.write(cfg_path, "config.yaml")
-        db_path = Path(__file__).parent.parent / "history.db"
-        if db_path.exists():
-            zf.write(db_path, "history.db")
+        # Snapshot through SQLite: a plain file copy misses writes still in the WAL.
+        zf.writestr("history.db", history.backup_bytes())
     buf.seek(0)
     date_str = datetime.now().strftime("%Y%m%d-%H%M")
     suffix = "-no-passwords" if skip_passwords else ""
@@ -1028,8 +1028,27 @@ async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = Fa
     if "config.yaml" not in names and "history.db" not in names:
         raise HTTPException(400, "Zip does not contain config.yaml or history.db")
 
-    global CONFIG
+    # Validate everything before touching anything, so a bad backup can never
+    # leave the install half-restored.
+    cfg_bytes = db_bytes = None
+    new_cfg: dict = {}
     if "config.yaml" in names:
+        cfg_bytes = zf.read("config.yaml")
+        try:
+            new_cfg = yaml.safe_load(cfg_bytes)
+        except yaml.YAMLError as e:
+            raise HTTPException(400, f"config.yaml in backup is not valid YAML: {e}")
+        if not isinstance(new_cfg, dict) or not new_cfg:
+            raise HTTPException(400, "config.yaml in backup is empty or not a mapping")
+    if "history.db" in names:
+        db_bytes = zf.read("history.db")
+        try:
+            history.validate_backup(db_bytes)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    global CONFIG
+    if cfg_bytes is not None:
         # Snapshot current passwords before overwriting
         saved_passwords: dict = {}
         if skip_passwords:
@@ -1040,11 +1059,12 @@ async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = Fa
             }
         cfg_path = _config_path()
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
-        cfg_path.write_bytes(zf.read("config.yaml"))
-        cfg_path.chmod(0o600)
-        with open(cfg_path) as f:
-            CONFIG.clear()
-            CONFIG.update(yaml.safe_load(f) or {})
+        tmp = cfg_path.with_suffix(".yaml.tmp")
+        tmp.write_bytes(cfg_bytes)
+        tmp.chmod(0o600)
+        tmp.replace(cfg_path)  # atomic on Linux
+        CONFIG.clear()
+        CONFIG.update(new_cfg)
         # Re-apply saved passwords if requested
         if skip_passwords:
             for (section, key), value in saved_passwords.items():
@@ -1055,10 +1075,11 @@ async def backup_restore(file: UploadFile = File(...), skip_passwords: bool = Fa
         _rebuild_caches()
         logger.info("Config restored from backup (skip_passwords=%s)", skip_passwords)
 
-    if "history.db" in names:
-        db_path = Path(__file__).parent.parent / "history.db"
-        db_path.write_bytes(zf.read("history.db"))
-        logger.info("history.db restored from backup")
+    if db_bytes is not None:
+        try:
+            history.restore_db(db_bytes)
+        except ValueError as e:  # validated above; only a race could get here
+            raise HTTPException(400, str(e))
 
     restored = [n for n in ["config.yaml", "history.db"] if n in names]
     return {"ok": True, "restored": restored}

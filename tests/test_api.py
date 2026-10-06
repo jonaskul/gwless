@@ -119,3 +119,111 @@ def test_backup_restore_round_trip(client):
     assert r.status_code == 200 and main.CONFIG["sophos"]["host"] == "10.0.0.1"
     assert client.post("/api/restore",
                        files={"file": ("x.zip", b"junk", "application/zip")}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# History backup / restore (WAL-safe, validated)
+# ---------------------------------------------------------------------------
+
+def _zip(**files):
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, data in files.items():
+            zf.writestr(name.replace("_", "."), data)
+    return buf.getvalue()
+
+
+def _events(client):
+    return len(client.get("/api/history/events").json()["events"])
+
+
+def _see(client, macs):
+    main._cache_leases.set([{"mac": m, "ip": f"10.0.0.{i}"} for i, m in enumerate(macs, 1)])
+    main._cache_unifi.set({"clients": [], "ap_map": {}})  # only the leases above
+    main._history_last_ts = 0
+    client.get("/api/clients")
+
+
+def _backup_db(client, tmp_path):
+    import io, sqlite3, zipfile
+    raw = zipfile.ZipFile(io.BytesIO(client.get("/api/backup").content)).read("history.db")
+    path = tmp_path / "from-backup.db"
+    path.write_bytes(raw)
+    return sqlite3.connect(path)
+
+
+def test_backup_includes_writes_still_in_the_wal(client, tmp_path):
+    """Regression: a plain file copy of a WAL database left the tables out."""
+    _see(client, ["aa:aa:aa:aa:aa:01", "aa:aa:aa:aa:aa:02"])
+    db = _backup_db(client, tmp_path)
+    assert db.execute("SELECT count(*) FROM events").fetchone()[0] == _events(client)
+    assert db.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+
+
+def test_restore_replaces_the_live_history(client):
+    """Regression: restore reported ok but the open connection kept the old data."""
+    _see(client, ["aa:aa:aa:aa:aa:01"])
+    backup = client.get("/api/backup").content
+    snapshot = _events(client)
+    _see(client, [f"bb:bb:bb:bb:bb:0{i}" for i in range(1, 6)])
+    assert _events(client) > snapshot
+
+    r = client.post("/api/restore", files={"file": ("b.zip", backup, "application/zip")})
+    assert r.status_code == 200
+    assert _events(client) == snapshot
+    _see(client, ["cc:cc:cc:cc:cc:01"])  # and the reopened DB keeps working
+    assert _events(client) == snapshot + 1
+
+
+@pytest.mark.parametrize("payload, message", [
+    (_zip(history_db=b"not a database"), "not a valid SQLite database"),
+    (_zip(config_yaml=b"sophos: [unclosed"), "not valid YAML"),
+    (_zip(config_yaml=b""), "empty or not a mapping"),
+], ids=["corrupt-db", "broken-yaml", "empty-yaml"])
+def test_restore_rejects_corrupt_backups_and_keeps_running(client, payload, message):
+    """Regression: a corrupt history.db was accepted and broke the app."""
+    _see(client, ["aa:aa:aa:aa:aa:01"])
+    before = _events(client)
+    r = client.post("/api/restore", files={"file": ("x.zip", payload, "application/zip")})
+    assert r.status_code == 400 and message in r.json()["detail"]
+    assert _events(client) == before
+
+
+def test_restore_rejects_a_database_without_gwless_tables(client, tmp_path):
+    import sqlite3
+    other = tmp_path / "other.db"
+    sqlite3.connect(other).execute("CREATE TABLE unrelated (x)").connection.commit()
+    r = client.post("/api/restore", files={"file": (
+        "x.zip", _zip(history_db=other.read_bytes()), "application/zip")})
+    assert r.status_code == 400 and "missing tables" in r.json()["detail"]
+
+
+def test_bad_database_aborts_the_whole_restore(client):
+    """Nothing is applied unless every file in the backup is usable."""
+    main.CONFIG["sophos"]["host"] = "current"
+    payload = _zip(config_yaml=b"sophos:\n  host: from-backup\n", history_db=b"junk")
+    r = client.post("/api/restore", files={"file": ("x.zip", payload, "application/zip")})
+    assert r.status_code == 400
+    assert main.CONFIG["sophos"]["host"] == "current"
+
+
+def test_restoring_an_older_schema_is_migrated(client, tmp_path):
+    """Backups from before custom names existed must still restore and work."""
+    import sqlite3
+    old = tmp_path / "old.db"
+    db = sqlite3.connect(old)
+    db.executescript("""
+        CREATE TABLE devices (mac TEXT PRIMARY KEY, first_seen INTEGER NOT NULL,
+            last_seen INTEGER NOT NULL, last_ip TEXT, last_hostname TEXT, vendor TEXT);
+        CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL,
+            mac TEXT NOT NULL, event TEXT NOT NULL, detail TEXT);
+        INSERT INTO devices VALUES ('aa:aa:aa:aa:aa:01', 1, 1, '10.0.0.1', 'old', 'x');
+    """)
+    db.commit(); db.close()
+    r = client.post("/api/restore", files={"file": (
+        "x.zip", _zip(history_db=old.read_bytes()), "application/zip")})
+    assert r.status_code == 200
+    assert client.patch("/api/device/aa:aa:aa:aa:aa:01/name", json={"name": "Kept"}).status_code == 200
+    [c] = client.get("/api/clients").json()["clients"]
+    assert c["custom_name"] == "Kept"

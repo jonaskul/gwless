@@ -5,7 +5,9 @@ Records first/last seen per MAC and generates events for notable changes.
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -36,6 +38,91 @@ def _conn() -> sqlite3.Connection:
         _db.execute("PRAGMA synchronous=NORMAL")
         _db.execute("PRAGMA cache_size=-8000")   # 8 MB page cache
     return _db
+
+
+# ---------------------------------------------------------------------------
+# Backup / restore
+#
+# The database runs in WAL mode, so recent writes live in history.db-wal until
+# SQLite checkpoints them. Copying history.db as a plain file therefore misses
+# them (on a young install, the file may not even hold the tables yet), and
+# overwriting it under an open connection lets the old WAL win. Both directions
+# go through SQLite instead.
+# ---------------------------------------------------------------------------
+
+_REQUIRED_TABLES = {"devices", "events"}
+
+
+def backup_bytes() -> bytes:
+    """Return a self-contained snapshot of the database, WAL contents included."""
+    with tempfile.TemporaryDirectory() as td:
+        snapshot = Path(td) / "history.db"
+        dst = sqlite3.connect(str(snapshot))
+        try:
+            with _lock:
+                _conn().backup(dst)
+            # Single file, no -wal companion, so the bytes stand on their own.
+            dst.execute("PRAGMA journal_mode=DELETE")
+        finally:
+            dst.close()
+        return snapshot.read_bytes()
+
+
+def _check_db_file(path: Path) -> None:
+    """Raise ValueError unless path is an intact gwless history database."""
+    try:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            ok = db.execute("PRAGMA integrity_check").fetchone()[0]
+            tables = {r[0] for r in db.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        finally:
+            db.close()
+    except sqlite3.DatabaseError as e:
+        raise ValueError(f"history.db is not a valid SQLite database ({e})") from None
+    if ok != "ok":
+        raise ValueError(f"history.db failed its integrity check ({ok})")
+    missing = _REQUIRED_TABLES - tables
+    if missing:
+        raise ValueError(f"history.db is missing tables: {', '.join(sorted(missing))}")
+
+
+def validate_backup(data: bytes) -> None:
+    """Raise ValueError unless data is a restorable history database."""
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "history.db"
+        path.write_bytes(data)
+        _check_db_file(path)
+
+
+def restore_db(data: bytes) -> None:
+    """
+    Replace the live database with data. Validates first and leaves the current
+    database untouched if the backup is unusable (raises ValueError).
+    """
+    global _db
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # Stage next to the live file so the final swap is an atomic rename.
+    fd, tmp_name = tempfile.mkstemp(prefix=".history-restore-", suffix=".db",
+                                    dir=DB_PATH.parent)
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        _check_db_file(tmp)
+        with _lock:
+            if _db is not None:
+                _db.close()
+                _db = None
+            # A leftover WAL would be replayed over the restored file.
+            for suffix in ("-wal", "-shm"):
+                Path(f"{DB_PATH}{suffix}").unlink(missing_ok=True)
+            os.replace(tmp, DB_PATH)
+    finally:
+        tmp.unlink(missing_ok=True)
+    # Reopen, and bring an older backup's schema up to date.
+    init_db()
+    logger.info("History DB restored from backup")
 
 
 def init_db() -> None:
