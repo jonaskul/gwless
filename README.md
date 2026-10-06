@@ -159,6 +159,9 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 | Key | Default | Description |
 |-----|---------|-------------|
 | `host` | — | Sophos XGS IP or hostname |
+| `username` | `admin` | Sophos admin user (API and SSH) |
+| `password` | — | Sophos password (API and SSH) |
+| `api_password` | — | Optional separate WebAdmin API password — falls back to `password` |
 | `api_port` | `4444` | WebAdmin API port |
 | `ssh_enabled` | `false` | Enable SSH access (requires full admin) |
 | `ssh_port` | `22` | SSH port |
@@ -172,6 +175,8 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 | Key | Default | Description |
 |-----|---------|-------------|
 | `host` | — | UniFi Network Application host |
+| `username` | — | UniFi local admin user |
+| `password` | — | UniFi password |
 | `port` | `443` | HTTPS port |
 | `site` | `default` | UniFi site name |
 | `poll_interval` | `30` | Seconds between UniFi client refresh |
@@ -207,7 +212,7 @@ All settings can be managed from the **⚙ Settings** panel. Direct file referen
 |----------|-------------|
 | `GET /api/clients` | All merged clients — supports `?q=`, `?vlan=`, `?source=`, `?status=` |
 | `GET /api/clients/{mac}` | Full detail for one client |
-| `GET /api/scopes` | DHCP scopes with static reservations and lease counts |
+| `GET /api/scopes` | DHCP scopes with static reservations and active-lease counts (`leases_used` / `leases_total`) |
 | `GET /api/stats` | Summary counts and data freshness |
 | `GET /api/syslog/status` | Syslog receiver status and recent log |
 | `GET /api/version` | Installed version |

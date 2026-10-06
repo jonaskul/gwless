@@ -4,11 +4,23 @@ Embedded UDP syslog receiver for Gwless.
 Listens for syslog datagrams from Sophos SFOS and extracts DHCP events
 (Acknowledge, Release) to maintain a live lease table — no SSH required.
 
-Sophos SFOS syslog DHCP message format (key=value pairs):
-  date=2026-04-05 time=14:30:00 timezone="UTC" device_name="XG-1"
-  log_component="DHCP" log_subtype="DHCP Acknowledge"
-  src_mac=AA:BB:CC:DD:EE:FF src_ip=192.168.1.100
-  hostname="mydevice" lease_time=86400
+Sophos SFOS syslog DHCP messages are key=value pairs. What the parser relies on:
+  log_component / log_subtype   must contain "dhcp" (SFOS 22: "DHCP Server")
+  status                        the event — Ack/New/Renew/... keep a lease,
+                                Release/Expire/... remove it
+  src_mac                       client MAC; "-" on XGS Expire/Release events,
+                                which are then matched by IP instead
+  reported_ip                   leased IP (older SFOS: leased_ip / src_ip / ipaddress)
+  reported_host                 hostname (older SFOS: client_host_name / hostname)
+  lease_time                    seconds, default 86400
+
+Example (XGS):
+  device_name="XGS107" log_component="DHCP Server" status="Ack"
+  src_mac=AA:BB:CC:DD:EE:FF reported_ip=192.168.1.100
+  reported_host="mydevice" lease_time=86400
+
+Messages without a recognised status are counted and kept in the
+diagnostics buffer but otherwise ignored.
 """
 from __future__ import annotations
 
