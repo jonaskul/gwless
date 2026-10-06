@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import io
+import ipaddress
 import json
 import logging
 import os
@@ -23,7 +24,7 @@ import yaml
 from fastapi import Body, Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .cache import TTLCache
 from .history import init_db, record_seen, get_device, get_recent_events, set_custom_name, get_all_custom_names
@@ -675,16 +676,43 @@ class ConfigPayload(BaseModel):
     syslog: SyslogConfig = SyslogConfig()
 
 
+def _validated_mac(v: str) -> str:
+    mac = normalize_mac(v)
+    if len(mac) != 17:
+        raise ValueError("not a valid MAC address")
+    return mac
+
+
 class ReservePayload(BaseModel):
     server_name: str
     mac: str
     ip: str
     hostname: str = ""
 
+    # These values end up in a full <Set> of the DHCP server on Sophos, so
+    # reject malformed input here rather than relying on the firewall to.
+    @field_validator("mac")
+    @classmethod
+    def check_mac(cls, v: str) -> str:
+        return _validated_mac(v)
+
+    @field_validator("ip")
+    @classmethod
+    def check_ip(cls, v: str) -> str:
+        try:
+            return str(ipaddress.IPv4Address(v.strip()))
+        except ValueError:
+            raise ValueError("not a valid IPv4 address") from None
+
 
 class UnreservePayload(BaseModel):
     server_name: str
     mac: str
+
+    @field_validator("mac")
+    @classmethod
+    def check_mac(cls, v: str) -> str:
+        return _validated_mac(v)
 
 
 MASKED_SENTINEL = "••••••••"
@@ -1057,7 +1085,6 @@ async def set_device_name(mac: str, body: dict = Body(...)):
     """Set a custom display name for a device."""
     name = (body.get("name") or "").strip()[:64]
     set_custom_name(normalize_mac(mac), name)
-    _cache_leases.invalidate()
     return {"ok": True}
 
 
@@ -1065,7 +1092,6 @@ async def set_device_name(mac: str, body: dict = Body(...)):
 async def clear_device_name(mac: str):
     """Clear the custom display name for a device."""
     set_custom_name(normalize_mac(mac), "")
-    _cache_leases.invalidate()
     return {"ok": True}
 
 

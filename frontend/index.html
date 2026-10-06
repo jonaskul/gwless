@@ -2139,7 +2139,7 @@ async function openDhcpModal(mac, scopeName, currentIp, currentHostname, rangeSt
         closeDhcpModal();
         fetchClients();
       } else {
-        statusEl.textContent = data.message || 'Failed';
+        statusEl.textContent = _apiErrorText(data);
         statusEl.style.color = 'var(--red)';
         reserveBtn.disabled = false;
       }
@@ -2160,6 +2160,15 @@ function kvRow(label, value, copyable, raw) {
     <span class="kv-label">${esc(label)}</span>
     <span class="kv-value">${safeVal}${copyBtn}</span>
   </div>`;
+}
+
+// Pull a readable message out of an API error body: our own {ok:false, message},
+// FastAPI's {detail: "..."} or a 422 validation list {detail: [{msg}, ...]}.
+function _apiErrorText(data) {
+  if (data && data.message) return data.message;
+  const d = data && data.detail;
+  if (Array.isArray(d)) return d.map(e => e.msg).join('; ');
+  return d || 'Failed';
 }
 
 function copyText(btn) {
@@ -2441,7 +2450,7 @@ function initEvents() {
         btn.remove();
       } else {
         statusEl.style.color = 'var(--red)';
-        statusEl.textContent = data.message || 'Failed';
+        statusEl.textContent = _apiErrorText(data);
         btn.disabled = false;
       }
     } catch {
